@@ -14,7 +14,7 @@ def generate_obstacle_circle(center, radius, num=12):
 
 def generate_obstacle_rectangle(center, sides, num=12):
     # calculate the number of points on each side of the rectangle
-    a, b = sides # side lengths
+    a, b = sides  # side lengths
     n_side_1 = int(num // 2 * a / (a+b))
     n_side_2 = num // 2 - n_side_1
     n_side_3 = n_side_1
@@ -50,7 +50,7 @@ def generate_data(num_agents, dist_min_thres):
     i = 0
     while i < num_agents:
         candidate = np.random.uniform(size=(2,)) * side_length
-        dist_min = np.linalg.norm(states - candidate, axis=1).min()
+        dist_min = np.min(np.linalg.norm(states - candidate, axis=1))
         if dist_min <= dist_min_thres:
             continue
         states[i] = candidate
@@ -59,7 +59,7 @@ def generate_data(num_agents, dist_min_thres):
     i = 0
     while i < num_agents:
         candidate = np.random.uniform(-0.5, 0.5, size=(2,)) + states[i]
-        dist_min = np.linalg.norm(goals - candidate, axis=1).min()
+        dist_min = np.min(np.linalg.norm(goals - candidate, axis=1))
         if dist_min <= dist_min_thres:
             continue
         goals[i] = candidate
@@ -72,15 +72,16 @@ def generate_data(num_agents, dist_min_thres):
 
 
 def dynamics(states, actions):
-    """ The ground robot dynamics.
+    """ The ground robot dynamics (double integrator).
     
     Args:
-        s (N, 4): The current state.
-        a (N, 2): The acceleration taken by each agent.
+        states (N, 4): The current state.
+        actions (N, 2): The acceleration taken by each agent.
     Returns:
         dsdt (N, 4): The time derivative of s.
     """
-    dsdt = np.concatenate([states[:, 2:], actions], axis=1)
+    # dsdt = np.concatenate([states[:, 2:], actions], axis=1)
+    dsdt = torch.cat([states[:, 2:], actions], dim=1)
 
     return dsdt
 
@@ -90,7 +91,7 @@ def loss_barrier(h, states):
 
     Args:
         h (N, N, 1): The control barrier function.
-        s (N, 4): The current state of N agents.
+        states (N, 4): The current state of N agents.
         r (float): The radius of the safe regions.
         ttc (float): The threshold of time to collision.
     """
@@ -109,7 +110,7 @@ def loss_barrier(h, states):
     num_dang = num_dang.type(torch.float32)
     num_safe = num_safe.type(torch.float32)
 
-    eps=[1e-3, 0]
+    eps = [1e-3, 0]
     loss_dang = torch.sum(
         torch.max(dang_h + eps[0], 0)) / (1e-5 + num_dang)
     loss_safe = tf.reduce_sum(
@@ -230,15 +231,14 @@ def ttc_dangerous_mask_np(s):
     return ttc_dangerous
 
 
-def remove_distant_agents(x, k):
-    n, _, c = x.get_shape().as_list()
+def remove_distant_agents(x: torch.Tensor, k: int):
+    n, _, c = x.shape
     if n <= k:
         return x
     d_norm = torch.sqrt(torch.sum(torch.square(x[:, :, :2]) + 1e-6, dim=2))
     topk = torch.topk(-d_norm, k)
     indices = topk[-1]
-    row_indices = torch.unsqueeze(
-        torch.range(indices.size(dim=0)), dim=1) * torch.ones_like(indices)
+    row_indices = torch.unsqueeze(torch.arange(indices.size(dim=0)), dim=1) * torch.ones_like(indices)
     row_indices = torch.reshape(row_indices, (-1, 1))
     column_indices = torch.reshape(indices, (-1, 1))
     indices = torch.concat([row_indices, column_indices], dim=1)
@@ -247,4 +247,4 @@ def remove_distant_agents(x, k):
     gathered = x[ind_1, ind_2]
     x = torch.reshape(gathered, [n, k, c])
 
-    return x
+    return x, indices
