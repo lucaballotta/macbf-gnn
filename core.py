@@ -174,7 +174,7 @@ def loss_derivatives(states, actions, h, cbf):
 
 def loss_actions(s, g, a):
     state_gain = np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3)
-    print(state_gain)
+    # print(state_gain)
     state_gain = torch.from_numpy(state_gain)
     state_gain = state_gain.type(torch.float32)
     s_ref = torch.concat([s[:, :2] - g, s[:, 2:]], dim=1)
@@ -182,7 +182,7 @@ def loss_actions(s, g, a):
     action_ref_norm = torch.sum(torch.square(action_ref), dim=1)
     action_net_norm = torch.sum(torch.square(a), dim=1)
     norm_diff = torch.abs(action_net_norm - action_ref_norm)
-    loss = torch.mean(norm_diff)
+    loss = torch.mean(norm_diff).unsqueeze(0)
 
     return loss
 

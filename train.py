@@ -96,7 +96,8 @@ def main():
         acc_lists_np.append(acc_list_iter)
         # total_loss_iter = 10 * torch.add(loss_list_iter + weight_loss)
         # total_loss_iter = 10 * torch.add(loss_list_iter)
-        total_loss_iter = torch.Tensor(10 * loss_list_iter)
+        # total_loss_iter = torch.Tensor(10 * loss_list_iter)
+        total_loss_iter = 10 * torch.cat(loss_list_iter).sum()
 
         # apply optimization step
         optim_controller.zero_grad()
