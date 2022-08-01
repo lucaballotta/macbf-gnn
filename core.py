@@ -134,7 +134,7 @@ def loss_derivatives(states, actions, h, cbf):
     dsdt = dynamics(states, actions)
     states_next = states + dsdt * TIME_STEP
 
-    h_next = cbf.forward(states_next)
+    h_next, _ = cbf(states_next)
     deriv = h_next - h + TIME_STEP * ALPHA_CBF * h
 
     deriv_reshape = torch.reshape(deriv, (-1,))
@@ -215,8 +215,8 @@ def ttc_dangerous_mask(s):
 def ttc_dangerous_mask_np(s):
     s_diff = np.expand_dims(s, 1) - np.expand_dims(s, 0)
     x, y, vx, vy = np.split(s_diff, 4, axis=2)
-    x = x + np.expand_dims(np.eye(np.shape(s)[0]), 2)
-    y = y + np.expand_dims(np.eye(np.shape(s)[0]), 2)
+    x += np.expand_dims(np.eye(np.shape(s)[0]), 2)
+    y += np.expand_dims(np.eye(np.shape(s)[0]), 2)
     alpha = vx ** 2 + vy ** 2
     beta = 2 * (x * vx + y * vy)
     gamma = x ** 2 + y ** 2 - DIST_MIN_CHECK ** 2

@@ -1,17 +1,17 @@
-from logging import PlaceHolder
 import numpy as np
 import torch
 import torch.optim as optim
 import torch.nn as nn
 import argparse
 import os
+
 from tqdm import tqdm
-import itertools
+
+import controller
+import cbf
 
 from core import *
 from config import *
-import controller
-import cbf
 
 
 def parse_args():
@@ -85,7 +85,7 @@ def main():
         actions_trajectory = torch.cat(actions_trajectory, dim=0)
 
         # compute loss for batch of trajectory states
-        h_trajectory = cbf_certificate(states_trajectory)
+        h_trajectory, _ = cbf_certificate(states_trajectory)
         (loss_dang, loss_safe, acc_dang, acc_safe) = loss_barrier(h_trajectory, states_trajectory)
         (loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv
         ) = loss_derivatives(states_trajectory, actions_trajectory, h_trajectory, cbf_certificate)
@@ -105,6 +105,8 @@ def main():
         total_loss_iter.backward()
         optim_controller.step()
         optim_cbf.step()
+        
+    #TODO: save trained weigths
 
 
 if __name__ == '__main__':

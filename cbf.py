@@ -42,4 +42,4 @@ class CBF(nn.Module):
         # apply mask
         h = h * mask
 
-        return h
+        return h, mask
