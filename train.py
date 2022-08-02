@@ -4,6 +4,7 @@ import torch.optim as optim
 import torch.nn as nn
 import argparse
 import os
+import datetime
 
 from tqdm import tqdm
 
@@ -19,6 +20,7 @@ def parse_args():
     parser.add_argument('--num_agents', type=int, required=True)
     parser.add_argument('--model_path', type=str, default=None)
     parser.add_argument('--gpu', type=str, default='0')
+    parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args()
     return args
 
@@ -27,6 +29,24 @@ def main():
     args = parse_args()
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # set seeds
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(args.seed)
+
+    # setup logs
+    if not os.path.exists('./logs'):
+        os.mkdir('./logs')
+    start_time = datetime.datetime.now()
+    start_time = start_time.strftime('%Y%m%d%H%M%S')
+    if not os.path.exists(os.path.join('logs', start_time)):
+        os.mkdir(os.path.join('logs', f'seed{args.seed}_{start_time}'))
+    log_dir = os.path.join('logs', f'seed{args.seed}_{start_time}')
+    if not os.path.exists(os.path.join(log_dir, 'models')):
+        os.mkdir(os.path.join(log_dir, 'models'))
+    model_path = os.path.join(log_dir, 'models')
 
     # create controller and CBF
     cbf_controller = controller.Controller(in_dim=4).to(device)
@@ -45,7 +65,7 @@ def main():
     safety_rates = []
 
     # jointly train controller and CBF
-    for _ in tqdm(range(TRAIN_STEPS)):
+    for i_step in tqdm(range(1, TRAIN_STEPS + 1)):
 
         # generate initial states and goals
         states_curr, goals_curr = generate_data(args.num_agents, DIST_MIN_THRES)
@@ -105,8 +125,11 @@ def main():
         total_loss_iter.backward()
         optim_controller.step()
         optim_cbf.step()
-        
-    #TODO: save trained weigths
+
+        # save trained weights
+        if i_step % SAVE_STEPS == 0:
+            torch.save(cbf_certificate, os.path.join(model_path, f'step{i_step}_certificate.pkl'))
+            torch.save(cbf_controller, os.path.join(model_path, f'step{i_step}_controller.pkl'))
 
 
 if __name__ == '__main__':
