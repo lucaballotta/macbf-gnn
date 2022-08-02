@@ -19,7 +19,8 @@ from config import *
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_agents', type=int, required=True)
-    parser.add_argument('--model_path', type=str, required=True)
+    parser.add_argument('--path', type=str, required=True)
+    parser.add_argument('--step', type=int, default=None)
     parser.add_argument('--vis', type=int, default=0)
     parser.add_argument('--gpu', type=str, default='0')
     args = parser.parse_args()
@@ -69,7 +70,18 @@ def main():
     cbf_controller = controller.Controller(in_dim=4).to(device)
     cbf_certificate = cbf.CBF(in_dim=4).to(device)
     
-    #TODO: restore saved weights
+    # restore saved weights
+    model_path = os.path.join(args.path, 'models')
+    if args.step is not None:
+        cbf_certificate.load_state_dict(torch.load(os.path.join(model_path, f'step{args.step}_certificate.pkl')))
+        cbf_controller.load_state_dict(torch.load(os.path.join(model_path, f'step{args.step}_controller.pkl')))
+    else:
+        # load the last saved controller
+        files = os.listdir(model_path)
+        steps = [int(i.split('step')[1].split('_')[0]) for i in files if 'step' in i]
+        step = sorted(steps)[-1]
+        cbf_certificate.load_state_dict(torch.load(os.path.join(model_path, f'step{step}_certificate.pkl')))
+        cbf_controller.load_state_dict(torch.load(os.path.join(model_path, f'step{step}_controller.pkl')))
 
     safety_ratios_epoch = []
     safety_ratios_epoch_lqr = []
