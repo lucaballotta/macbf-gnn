@@ -25,7 +25,7 @@ class CBF(nn.Module):
             torch.sum(torch.square(x[:, :, :2]) + 1e-4, dim=2))
         x = torch.concat(
             [x,
-             torch.unsqueeze(torch.eye(x.size(dim=0)), dim=2),
+             torch.unsqueeze(torch.eye(x.size(dim=0)).type_as(x), dim=2),
              torch.unsqueeze(d_norm - DIST_MIN_THRES, dim=2)],
             dim=2)
         x, _ = remove_distant_agents(x, TOP_K)

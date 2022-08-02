@@ -106,9 +106,9 @@ def loss_barrier(h, states):
     num_dang = dang_h.size(dim=0)
     num_safe = safe_h.size(dim=0)
 
-    num_dang = torch.Tensor([num_dang])
+    num_dang = torch.Tensor([num_dang]).type_as(states)
     num_dang = num_dang.type(torch.float32)
-    num_safe = torch.Tensor([num_safe])
+    num_safe = torch.Tensor([num_safe]).type_as(states)
     num_safe = num_safe.type(torch.float32)
 
     eps = [1e-3, 0]
@@ -123,9 +123,9 @@ def loss_barrier(h, states):
     acc_safe = torch.sum(safe_h.type(torch.float32)) / (1e-5 + num_safe)
 
     acc_dang = torch.where(
-        torch.greater(num_dang, 0), acc_dang, -torch.Tensor([1.0]))
+        torch.greater(num_dang, 0), acc_dang, -torch.Tensor([1.0]).type_as(acc_dang))
     acc_safe = torch.where(
-        torch.greater(num_safe, 0), acc_safe, -torch.Tensor([1.0]))
+        torch.greater(num_safe, 0), acc_safe, -torch.Tensor([1.0]).type_as(acc_safe))
 
     return loss_dang, loss_safe, acc_dang, acc_safe
 
@@ -148,9 +148,9 @@ def loss_derivatives(states, actions, h, cbf):
     num_dang = dang_deriv.size(dim=0)
     num_safe = safe_deriv.size(dim=0)
 
-    num_dang = torch.Tensor([num_dang])
+    num_dang = torch.Tensor([num_dang]).type_as(states)
     num_dang = num_dang.type(torch.float32)
-    num_safe = torch.Tensor([num_safe])
+    num_safe = torch.Tensor([num_safe]).type_as(states)
     num_safe = num_safe.type(torch.float32)
 
     eps=[1e-3, 0]
@@ -165,9 +165,9 @@ def loss_derivatives(states, actions, h, cbf):
     acc_safe_deriv = torch.sum(acc_safe_deriv.type(torch.float32)) / (1e-5 + num_safe)
 
     acc_dang_deriv = torch.where(
-        torch.greater(num_dang, 0), acc_dang_deriv, -torch.Tensor([1.0]))
+        torch.greater(num_dang, 0), acc_dang_deriv, -torch.Tensor([1.0]).type_as(acc_dang_deriv))
     acc_safe_deriv = torch.where(
-        torch.greater(num_safe, 0), acc_safe_deriv, -torch.Tensor([1.0]))
+        torch.greater(num_safe, 0), acc_safe_deriv, -torch.Tensor([1.0]).type_as(acc_safe_deriv))
 
     return loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv
 
@@ -175,7 +175,7 @@ def loss_derivatives(states, actions, h, cbf):
 def loss_actions(s, g, a):
     state_gain = np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3)
     # print(state_gain)
-    state_gain = torch.from_numpy(state_gain)
+    state_gain = torch.from_numpy(state_gain).type_as(s)
     state_gain = state_gain.type(torch.float32)
     s_ref = torch.concat([s[:, :2] - g, s[:, 2:]], dim=1)
     action_ref = torch.matmul(s_ref, torch.transpose(state_gain, 0, 1))
@@ -190,7 +190,7 @@ def loss_actions(s, g, a):
 def ttc_dangerous_mask(s):
     s_diff = torch.unsqueeze(s, dim=1) - torch.unsqueeze(s, dim=0)
     s_diff = torch.concat(
-        [s_diff, torch.unsqueeze(torch.eye(s.size(dim=0)), dim=2)], dim=2)
+        [s_diff, torch.unsqueeze(torch.eye(s.size(dim=0)).type_as(s), dim=2)], dim=2)
     s_diff, _ = remove_distant_agents(s_diff, TOP_K)
     x, y, vx, vy, eye = torch.split(s_diff, 1, dim=2)
     x = x + eye
@@ -241,7 +241,8 @@ def remove_distant_agents(x: torch.Tensor, k: int):
     d_norm = torch.sqrt(torch.sum(torch.square(x[:, :, :2]) + 1e-6, dim=2))
     topk = torch.topk(-d_norm, k)
     indices = topk[-1]
-    row_indices = torch.unsqueeze(torch.arange(indices.size(dim=0)), dim=1) * torch.ones_like(indices)
+    row_indices = torch.unsqueeze(torch.arange(indices.size(dim=0)).type_as(indices), dim=1) * \
+                  torch.ones_like(indices).type_as(indices)
     row_indices = torch.reshape(row_indices, (-1, 1))
     column_indices = torch.reshape(indices, (-1, 1))
     indices = torch.concat([row_indices, column_indices], dim=1)
