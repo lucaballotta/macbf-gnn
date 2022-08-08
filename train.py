@@ -1,8 +1,7 @@
-from tkinter import N
+from ast import Num
 import numpy as np
 import torch
 import torch.optim as optim
-import torch.nn as nn
 import argparse
 import os
 import datetime
@@ -10,7 +9,7 @@ import datetime
 from tqdm import tqdm
 
 import controller
-import cbf
+import cbf_gnn
 
 from core import *
 from config import *
@@ -51,7 +50,8 @@ def main():
 
     # create controller and CBF
     cbf_controller = controller.Controller(in_dim=4).to(device)
-    cbf_certificate = cbf.CBF(in_dim=4).to(device)
+    cbf_certificate = cbf_gnn.GNNLayer(feat_dim=1, phi_dim=2, aggr_dim=2,
+                                        num_agents=args.num_agents, state_dim=4).to(device)
 
     # create optimizers
     optim_controller = optim.Adam(cbf_controller.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
@@ -71,6 +71,12 @@ def main():
         # generate initial states and goals
         states_curr, goals_curr = generate_data(args.num_agents, DIST_MIN_THRES)
         states_curr = torch.from_numpy(states_curr).to(device)
+
+        x_init = torch.ones((args.num_agents, 1))
+        cbf_certificate(x=x_init, states=states_curr)
+
+        return
+
         goals_curr = torch.from_numpy(goals_curr).to(device)
         states_trajectory = []
         goals_trajectory = []

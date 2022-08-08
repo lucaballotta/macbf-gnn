@@ -1,6 +1,65 @@
 import numpy as np
 import torch
+import torch.nn as nn
+from torch_geometric.nn import TransformerConv
 from config import *
+
+
+class MLP(nn.Module):
+
+    def __init__(self, in_channels: int, out_channels: int, hidden_layers: tuple,
+                 hidden_activation: nn.Module = nn.ReLU(), output_activation: nn.Module = None):
+        super().__init__()
+
+        layers = []
+        units = in_channels
+        for next_units in hidden_layers:
+            layers.append(nn.Linear(units, next_units))
+            layers.append(hidden_activation)
+            units = next_units
+            
+        layers.append(nn.Linear(units, out_channels))
+        if output_activation is not None:
+            layers.append(output_activation)
+
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+
+
+'''class AttentionNet(Aggregation):
+
+    def __init__(self, in_dim: int) -> None:
+        super().__init__()
+        self.aggregator = TransformerConv(in_channels=in_dim, out_channels=in_dim)
+
+
+    def forward(self, x: torch.Tensor, 
+                edge_index: torch.Union[torch.Tensor, torch.SparseTensor]) -> torch.Tensor:
+        return self.aggregator(x, edge_index)'''
+
+
+def build_comm_links(states, num_agents):
+
+        # compute inter-agent distances
+        rel_position = torch.unsqueeze(states[:, :2], dim=1) - torch.unsqueeze(states[:, :2], dim=0)
+        dist = torch.norm(rel_position, dim=2, keepdim=True)
+        
+        # build communication mask
+        mask = torch.squeeze((torch.less_equal(dist, COMM_RADIUS)) & (torch.greater(dist, 0)))     
+
+        # build communication graph
+        edge_sources = torch.tensor([], dtype=torch.int64)
+        edge_sinks = torch.tensor([], dtype=torch.int64)
+        
+        for agent in range(num_agents):
+            neighs = torch.cat(torch.where(mask[agent]), dim=0)
+            edge_sources = torch.cat([edge_sources, torch.ones_like(neighs) * agent])
+            edge_sinks = torch.cat([edge_sinks, neighs])
+            
+        edge_index = torch.tensor([edge_sources.tolist(), edge_sinks.tolist()])
+        return edge_index
 
 
 def generate_obstacle_circle(center, radius, num=12):

@@ -1,43 +1,39 @@
 import torch
-import torch.nn as nn
 import torch_geometric.nn as gnn
+# from torch_geometric_temporal.nn.recurrent import GConvGRU
+from torch.nn import LSTM
 from core import *
 from config import *
 
 
-class CBF(nn.Module):
+class GNNLayer(gnn.MessagePassing):
 
-    def __init__(self, in_dim: int, num_agents: int):
-        super(CBF, self).__init__()
-        self.net = gnn.Sequential('states, edges', [
-            gnn.GCNConv(in_dim, 64),
-            nn.ReLU(),
-            gnn.GCNConv(64, 64),
-            nn.ReLU(),
-            nn.Conv1d(64, 1, (1,))
-            ])
+    def __init__(self, feat_dim: int, phi_dim: int, aggr_dim: int, num_agents: int, state_dim: int):
+        super(GNNLayer, self).__init__()
         self.num_agents = num_agents
+        self.phi = MLP(in_channels=feat_dim + state_dim, out_channels=phi_dim, hidden_layers=(20, 20))
+        self.aggregator = gnn.TransformerConv(in_channels=phi_dim, out_channels=aggr_dim)
+        self.gamma = LSTM(aggr_dim + feat_dim, 20, feat_dim)
 
-    def forward(self, states):
-        
-        # compute mask for inter-agent distances
-        states_diff = torch.unsqueeze(states, dim=1) - torch.unsqueeze(states, dim=0)
-        dist = torch.norm(states_diff[:, :, :2], dim=2, keepdim=True)
-        mask = torch.squeeze(torch.less_equal(dist, OBS_RADIUS))
-        
-        # build sensing graph
-        edge_sources = torch.tensor([], dtype=torch.int64)
-        edge_sinks = torch.tensor([], dtype=torch.int64)
-        
-        for agent in range(self.num_agents):
-            neighs = torch.cat(torch.where(mask[agent]), dim=0)
-            neighs = neighs[neighs!=agent]
-            edge_sources = torch.cat([edge_sources, torch.ones_like(neighs) * agent])
-            edge_sinks = torch.cat([edge_sinks, neighs])
-            
-        edges = edges.tensor([edge_sources.tolist(), edge_sinks.tolist()])
 
-        # apply GNN
-        h = self.net(states, edges)
+    def forward(self, x, states):
 
-        return h, mask
+        # define graph connectivity based on communication radius
+        edge_index = build_comm_links(states, self.num_agents)
+
+        # run message passing
+        return self.propagate(edge_index, x=x, states=states)
+
+
+    def message(self, x_j, states_i, states_j):
+        info_ij = torch.cat([x_j, states_j - states_i], dim=1)
+        return self.phi(info_ij)
+
+
+    def aggregate(self, phi_out, edge_index):
+        return self.aggregator(phi_out, edge_index)
+
+
+    def update(self, aggr_out_i, x_i):
+        gamma_input = torch.cat([aggr_out_i, x_i], dim=1)
+        return self.gamma(gamma_input)
