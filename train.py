@@ -65,18 +65,15 @@ def main():
     acc_lists_np = []
     safety_rates = []
 
+    feat_dim = 32
+    feat_init = torch.ones((args.num_agents, feat_dim))
+
     # jointly train controller and CBF
     for i_step in tqdm(range(1, TRAIN_STEPS + 1)):
 
         # generate initial states and goals
         states_curr, goals_curr = generate_data(args.num_agents, DIST_MIN_THRES)
         states_curr = torch.from_numpy(states_curr).to(device)
-
-        x_init = torch.ones((args.num_agents, 1))
-        cbf_certificate(x=x_init, states=states_curr)
-
-        return
-
         goals_curr = torch.from_numpy(goals_curr).to(device)
         states_trajectory = []
         goals_trajectory = []

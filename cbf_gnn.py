@@ -1,9 +1,13 @@
 import torch
+from torch.nn import LSTM
 import torch_geometric.nn as gnn
 # from torch_geometric_temporal.nn.recurrent import GConvGRU
-from torch.nn import LSTM
 from core import *
 from config import *
+
+
+class GNN(nn.Module):
+    
 
 
 class GNNLayer(gnn.MessagePassing):
