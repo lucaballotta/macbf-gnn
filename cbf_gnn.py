@@ -1,3 +1,4 @@
+from turtle import forward
 import torch
 from torch.nn import LSTM
 import torch_geometric.nn as gnn
@@ -7,7 +8,32 @@ from config import *
 
 
 class GNN(nn.Module):
-    
+
+    def __init__(self, feat_dim: int, phi_dim: int, aggr_dim: int, num_agents: int, state_dim: int):
+        super().__init__()
+        self.GNN_layer1 = GNNLayer(feat_dim, phi_dim, aggr_dim, num_agents, state_dim)
+        self.GNN_layer2 = GNNLayer(feat_dim, phi_dim, aggr_dim, num_agents, state_dim)
+        self.relu = nn.ReLU()
+        self.feat_transformer = gnn.Sequential('x, states', [
+            (GNNLayer(feat_dim, phi_dim, aggr_dim, num_agents, state_dim), 'x, states -> x'),
+            nn.ReLU(),
+            (GNNLayer(feat_dim, phi_dim, aggr_dim, num_agents, state_dim), 'x, states -> x'),
+            ])
+        self.feat_2_CBF = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(feat_dim, 1)
+            )
+
+
+    def forward(self, x, states):
+        x = self.GNN_layer1(x, states)
+        x = self.relu(x)
+        print('@@@@@@@@@@@@@@@@@')
+        x = self.GNN_layer2(x, states)
+
+        x = self.feat_transformer(x, states)
+        h = self.feat_2_CBF(x)
+        return x, h
 
 
 class GNNLayer(gnn.MessagePassing):
@@ -17,7 +43,7 @@ class GNNLayer(gnn.MessagePassing):
         self.num_agents = num_agents
         self.phi = MLP(in_channels=feat_dim + state_dim, out_channels=phi_dim, hidden_layers=(20, 20))
         self.aggregator = gnn.TransformerConv(in_channels=phi_dim, out_channels=aggr_dim)
-        self.gamma = LSTM(aggr_dim + feat_dim, 20, feat_dim)
+        self.gamma = LSTM(input_size=aggr_dim + feat_dim, hidden_size=feat_dim, num_layers=2)
 
 
     def forward(self, x, states):
@@ -35,9 +61,12 @@ class GNNLayer(gnn.MessagePassing):
 
 
     def aggregate(self, phi_out, edge_index):
-        return self.aggregator(phi_out, edge_index)
+        out = self.aggregator(phi_out, edge_index)
+        print('o',out.size())
+        return out
 
 
-    def update(self, aggr_out_i, x_i):
-        gamma_input = torch.cat([aggr_out_i, x_i], dim=1)
-        return self.gamma(gamma_input)
+    def update(self, aggr_out, x):
+        gamma_input = torch.cat([aggr_out, x], dim=1)
+        out = self.gamma(gamma_input)
+        return out[0]

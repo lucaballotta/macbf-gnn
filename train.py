@@ -17,7 +17,7 @@ from config import *
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--num_agents', type=int, required=True)
+    parser.add_argument('-n', '--num_agents', type=int, required=True)
     parser.add_argument('--model_path', type=str, default=None)
     parser.add_argument('--gpu', type=str, default='0')
     parser.add_argument('--seed', type=int, default=0)
@@ -39,19 +39,24 @@ def main():
     # setup logs
     if not os.path.exists('./logs'):
         os.mkdir('./logs')
+
     start_time = datetime.datetime.now()
     start_time = start_time.strftime('%Y%m%d%H%M%S')
     if not os.path.exists(os.path.join('logs', start_time)):
         os.mkdir(os.path.join('logs', f'seed{args.seed}_{start_time}'))
+
     log_dir = os.path.join('logs', f'seed{args.seed}_{start_time}')
     if not os.path.exists(os.path.join(log_dir, 'models')):
         os.mkdir(os.path.join(log_dir, 'models'))
+
     model_path = os.path.join(log_dir, 'models')
 
     # create controller and CBF
+    num_agents = args.num_agents
+    feat_dim = 32
     cbf_controller = controller.Controller(in_dim=4).to(device)
-    cbf_certificate = cbf_gnn.GNNLayer(feat_dim=1, phi_dim=2, aggr_dim=2,
-                                        num_agents=args.num_agents, state_dim=4).to(device)
+    cbf_certificate = cbf_gnn.GNN(feat_dim=feat_dim, phi_dim=feat_dim, aggr_dim=feat_dim,
+                                        num_agents=num_agents, state_dim=4).to(device)
 
     # create optimizers
     optim_controller = optim.Adam(cbf_controller.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
@@ -64,9 +69,7 @@ def main():
     loss_lists_np = []
     acc_lists_np = []
     safety_rates = []
-
-    feat_dim = 32
-    feat_init = torch.ones((args.num_agents, feat_dim))
+    x_init = torch.ones((num_agents, feat_dim))
 
     # jointly train controller and CBF
     for i_step in tqdm(range(1, TRAIN_STEPS + 1)):
@@ -75,14 +78,15 @@ def main():
         states_curr, goals_curr = generate_data(args.num_agents, DIST_MIN_THRES)
         states_curr = torch.from_numpy(states_curr).to(device)
         goals_curr = torch.from_numpy(goals_curr).to(device)
-        states_trajectory = []
-        goals_trajectory = []
-        actions_trajectory = []
+        x_trajectory = x_init
+        # states_trajectory = []
+        # goals_trajectory = []
+        # actions_trajectory = []
 
         # run system for INNER_LOOPS steps to generate consistent trajectory
         for _ in range(INNER_LOOPS):
-            states_trajectory.append(states_curr)
-            goals_trajectory.append(goals_curr)
+            # states_trajectory.append(states_curr)
+            # goals_trajectory.append(goals_curr)
 
             # compute the control input using the trained controller
             actions_curr = cbf_controller(states_curr, goals_curr)
@@ -92,7 +96,37 @@ def main():
 
             # simulate the system for one step
             states_curr = states_curr + dynamics(states_curr, actions_curr) * TIME_STEP
-            actions_trajectory.append(actions_curr)
+            # actions_trajectory.append(actions_curr)
+
+            states_trajectory = states_curr
+            goals_trajectory = goals_curr
+            actions_trajectory = actions_curr
+            # states_trajectory = torch.cat((states_curr,), dim=0)
+            # goals_trajectory = torch.cat((goals_curr,), dim=0)
+            # actions_trajectory = torch.cat((actions_curr,), dim=0)
+
+            # compute loss for batch of trajectory states
+            x_trajectory, h_trajectory = cbf_certificate(x_trajectory, states_trajectory)
+            (loss_dang, loss_safe, acc_dang, acc_safe) = loss_barrier(h_trajectory, states_trajectory)
+            (loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv
+            ) = loss_derivatives(states_trajectory, actions_trajectory, h_trajectory, cbf_certificate)
+            loss_action_iter = loss_actions(states_trajectory, goals_trajectory, actions_trajectory)
+            loss_list_iter = [2 * loss_dang, loss_safe, 2 * loss_dang_deriv, loss_safe_deriv, 0.01 * loss_action_iter]
+            acc_list_iter = [acc_dang, acc_safe, acc_dang_deriv, acc_safe_deriv]
+            loss_lists_np.append(loss_list_iter)
+            acc_lists_np.append(acc_list_iter)
+            # total_loss_iter = 10 * torch.add(loss_list_iter + weight_loss)
+            # total_loss_iter = 10 * torch.add(loss_list_iter)
+            # total_loss_iter = torch.Tensor(10 * loss_list_iter)
+            total_loss_iter = 10 * torch.cat(loss_list_iter).sum()
+
+            # apply optimization step
+            optim_controller.zero_grad()
+            optim_cbf.zero_grad()
+            total_loss_iter.backward()
+            optim_controller.step()
+            optim_cbf.step()
+
 
             # compute the safety rate
             # safety_rate = 1 - np.mean(ttc_dangerous_mask_np(states_curr), axis=1)
@@ -103,32 +137,6 @@ def main():
                 torch.norm(states_curr[:, :2] - goals_curr, dim=1)
             ) < DIST_MIN_CHECK:
                 break
-
-        states_trajectory = torch.cat(states_trajectory, dim=0)
-        goals_trajectory = torch.cat(goals_trajectory, dim=0)
-        actions_trajectory = torch.cat(actions_trajectory, dim=0)
-
-        # compute loss for batch of trajectory states
-        h_trajectory, _ = cbf_certificate(states_trajectory)
-        (loss_dang, loss_safe, acc_dang, acc_safe) = loss_barrier(h_trajectory, states_trajectory)
-        (loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv
-        ) = loss_derivatives(states_trajectory, actions_trajectory, h_trajectory, cbf_certificate)
-        loss_action_iter = loss_actions(states_trajectory, goals_trajectory, actions_trajectory)
-        loss_list_iter = [2 * loss_dang, loss_safe, 2 * loss_dang_deriv, loss_safe_deriv, 0.01 * loss_action_iter]
-        acc_list_iter = [acc_dang, acc_safe, acc_dang_deriv, acc_safe_deriv]
-        loss_lists_np.append(loss_list_iter)
-        acc_lists_np.append(acc_list_iter)
-        # total_loss_iter = 10 * torch.add(loss_list_iter + weight_loss)
-        # total_loss_iter = 10 * torch.add(loss_list_iter)
-        # total_loss_iter = torch.Tensor(10 * loss_list_iter)
-        total_loss_iter = 10 * torch.cat(loss_list_iter).sum()
-
-        # apply optimization step
-        optim_controller.zero_grad()
-        optim_cbf.zero_grad()
-        total_loss_iter.backward()
-        optim_controller.step()
-        optim_cbf.step()
 
         # save trained weights
         if i_step % SAVE_STEPS == 0:
