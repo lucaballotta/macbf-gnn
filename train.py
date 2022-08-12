@@ -8,10 +8,10 @@ import datetime
 
 from tqdm import tqdm
 
-import controller
+import controller_gnn
 import cbf_gnn
 
-from core import *
+from utils import *
 from config import *
 
 
@@ -22,6 +22,7 @@ def parse_args():
     parser.add_argument('--gpu', type=str, default='0')
     parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args()
+    
     return args
 
 
@@ -54,7 +55,7 @@ def main():
     # create controller and CBF
     num_agents = args.num_agents
     feat_dim = 32
-    cbf_controller = controller.Controller(in_dim=4).to(device)
+    cbf_controller = controller_gnn.Controller(in_dim=4).to(device)
     cbf_certificate = cbf_gnn.GNN(feat_dim=feat_dim, phi_dim=feat_dim, aggr_dim=feat_dim,
                                         num_agents=num_agents, state_dim=4).to(device)
 
@@ -69,16 +70,16 @@ def main():
     loss_lists_np = []
     acc_lists_np = []
     safety_rates = []
-    x_init = torch.ones((num_agents, feat_dim))
+
+    torch.autograd.set_detect_anomaly(True)
 
     # jointly train controller and CBF
     for i_step in tqdm(range(1, TRAIN_STEPS + 1)):
 
         # generate initial states and goals
-        states_curr, goals_curr = generate_data(args.num_agents, DIST_MIN_THRES)
+        states_curr, goals_curr = generate_data(args.num_agents)
         states_curr = torch.from_numpy(states_curr).to(device)
         goals_curr = torch.from_numpy(goals_curr).to(device)
-        x_trajectory = x_init
         # states_trajectory = []
         # goals_trajectory = []
         # actions_trajectory = []
@@ -106,7 +107,7 @@ def main():
             # actions_trajectory = torch.cat((actions_curr,), dim=0)
 
             # compute loss for batch of trajectory states
-            x_trajectory, h_trajectory = cbf_certificate(x_trajectory, states_trajectory)
+            h_trajectory = cbf_certificate(states_trajectory)
             (loss_dang, loss_safe, acc_dang, acc_safe) = loss_barrier(h_trajectory, states_trajectory)
             (loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv
             ) = loss_derivatives(states_trajectory, actions_trajectory, h_trajectory, cbf_certificate)
@@ -118,15 +119,15 @@ def main():
             # total_loss_iter = 10 * torch.add(loss_list_iter + weight_loss)
             # total_loss_iter = 10 * torch.add(loss_list_iter)
             # total_loss_iter = torch.Tensor(10 * loss_list_iter)
-            total_loss_iter = 10 * torch.cat(loss_list_iter).sum()
+            print(loss_list_iter)
+            total_loss_iter = 10 * torch.stack(loss_list_iter).sum()
 
             # apply optimization step
             optim_controller.zero_grad()
             optim_cbf.zero_grad()
-            total_loss_iter.backward()
+            total_loss_iter.backward(retain_graph=True)
             optim_controller.step()
             optim_cbf.step()
-
 
             # compute the safety rate
             # safety_rate = 1 - np.mean(ttc_dangerous_mask_np(states_curr), axis=1)

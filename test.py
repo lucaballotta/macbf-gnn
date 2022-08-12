@@ -12,7 +12,7 @@ from torch.nn import ReLU
 import controller
 import cbf
 
-from core import *
+from utils import *
 from config import *
 
 

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from core import *
+from utils import *
 from config import *
 
 

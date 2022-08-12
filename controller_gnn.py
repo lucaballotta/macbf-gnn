@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from core import *
+from utils import *
 from config import *
 
 
@@ -29,7 +29,6 @@ class Controller(nn.Module):
         # preprocess input data
         x = torch.unsqueeze(states, dim=1) - torch.unsqueeze(states, dim=0)
         x = torch.concat([x, torch.unsqueeze(torch.eye(x.size(dim=0)).type_as(x), dim=2)], dim=2)
-        x, _ = remove_distant_agents(x, TOP_K)
         
         # build local observation mask
         dist = torch.norm(x[:, :, :2], dim=2, keepdim=True)
