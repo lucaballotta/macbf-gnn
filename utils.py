@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import TransformerConv
 from config import *
+from torch import Tensor
 
 
 class MLP(nn.Module):
