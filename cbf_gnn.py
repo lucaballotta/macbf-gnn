@@ -34,12 +34,14 @@ class CBFGNN(nn.Module):
     def __init__(self, state_dim: int, phi_dim: int, num_agents: int):
         super().__init__()
         self.num_agents = num_agents
-        self.feat_transformer = gnn.Sequential('x, edge_index', [
-            (CBFGNNLayer(input_dim=state_dim, output_dim=64, phi_dim=phi_dim), 'x, edge_index -> x'),
+        self.feat_transformer = gnn.Sequential('x, edge_attr, edge_index', [
+            (CBFGNNLayer(node_dim=state_dim, edge_dim=state_dim, output_dim=64, phi_dim=phi_dim),
+             'x, edge_attr, edge_index -> x'),
             nn.ReLU(),
-            (CBFGNNLayer(input_dim=64, output_dim=64, phi_dim=phi_dim), 'x, edge_index -> x'),
+            (CBFGNNLayer(node_dim=64, edge_dim=state_dim, output_dim=64, phi_dim=phi_dim),
+             'x, edge_attr, edge_index -> x'),
         ])
-        self.feat_2_CBF = MLP(in_channels=64, out_channels=num_agents, hidden_layers=(64, 64))
+        self.feat_2_CBF = MLP(in_channels=64, out_channels=1, hidden_layers=(64, 64))
 
     def forward(self, data: Data) -> Tensor:
         """
@@ -52,28 +54,27 @@ class CBFGNN(nn.Module):
 
         Returns
         -------
-        h: (bs, n, n)
-            CBF values between all agents.
+        h: (bs, n)
+            CBF values for all agents
         """
         # define graph connectivity based on communication radius
-        # edge_index = build_comm_links(states, self.num_agents)
-        x = self.feat_transformer(data.x, data.edge_index)
+        x = self.feat_transformer(data.x, data.edge_attr, data.edge_index)
         h = self.feat_2_CBF(x)
-        return h.reshape((-1, self.num_agents, self.num_agents))
+        return h.reshape(-1, self.num_agents)
 
 
 class CBFGNNLayer(gnn.MessagePassing):
 
-    def __init__(self, input_dim: int, output_dim: int, phi_dim: int):
+    def __init__(self, node_dim: int, edge_dim: int, output_dim: int, phi_dim: int):
         super(CBFGNNLayer, self).__init__(aggr='max')
-        self.phi = MLP(in_channels=3 * input_dim, out_channels=phi_dim, hidden_layers=(64, 64))
-        self.gamma = MLP(in_channels=phi_dim + input_dim, out_channels=output_dim, hidden_layers=(64, 64))
+        self.phi = MLP(in_channels=2 * node_dim + edge_dim, out_channels=phi_dim, hidden_layers=(64, 64))
+        self.gamma = MLP(in_channels=phi_dim + node_dim, out_channels=output_dim, hidden_layers=(64, 64))
 
-    def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:
-        return self.propagate(edge_index, x=x)
+    def forward(self, x: Tensor, edge_attr: Tensor, edge_index: Tensor) -> Tensor:
+        return self.propagate(edge_index, x=x, edge_attr=edge_attr)
 
-    def message(self, x_j: Tensor, x_i: Tensor = None) -> Tensor:
-        info_ij = torch.cat([x_i, x_j, x_j - x_i], dim=1)
+    def message(self, x_j: Tensor, x_i: Tensor = None, edge_attr: Tensor = None) -> Tensor:
+        info_ij = torch.cat([x_i, x_j, edge_attr], dim=1)
         return self.phi(info_ij)
 
     def update(self, aggr_out: Tensor, x: Tensor = None) -> Tensor:

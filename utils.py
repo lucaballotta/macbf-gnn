@@ -53,15 +53,18 @@ def build_comm_links(states, num_agents):
     # build communication graph
     edge_sources = torch.tensor([], dtype=torch.int64)
     edge_sinks = torch.tensor([], dtype=torch.int64)
+    edge_attrs = torch.tensor([]).type_as(states)
     
     for agent in range(num_agents):
         neighs = torch.cat(torch.where(mask[agent]), dim=0)
         edge_sources = torch.cat([edge_sources, torch.ones_like(neighs) * agent])
         edge_sinks = torch.cat([edge_sinks, neighs])
+        for i_neigh in range(neighs.shape[0]):
+            edge_attrs = torch.cat([edge_attrs, (states[i_neigh, :] - states[agent, :]).unsqueeze(0)], dim=0)
         
     edge_index = torch.tensor([edge_sources.tolist(), edge_sinks.tolist()])
     
-    return edge_index
+    return edge_index, edge_attrs
 
 
 def generate_obstacle_circle(center, radius, num=12):

@@ -9,6 +9,7 @@ import datetime
 from tqdm import tqdm
 from torch_geometric.data import Data
 from torch_geometric.data import Batch
+from torch_geometric.loader import DataLoader
 
 import controller_gnn
 import cbf_gnn
@@ -99,7 +100,9 @@ def main():
                 noise = torch.randn(actions_curr.shape) * NOISE_SCALE
                 actions_curr = actions_curr + noise
 
-            data_traj.append(Data(x=states_curr, edge_index=build_comm_links(states_curr, num_agents)))
+            # store the communication graph
+            edge_index, edge_attr = build_comm_links(states_curr, num_agents)
+            data_traj.append(Data(x=torch.ones_like(states_curr), edge_index=edge_index, edge_attr=edge_attr))
 
             # simulate the system for one step
             states_curr = states_curr + dynamics(states_curr, actions_curr) * TIME_STEP
@@ -146,8 +149,6 @@ def main():
         # safety_rate = 1 - np.mean(ttc_dangerous_mask_np(states_curr), axis=1)
         # safety_rate = np.mean(safety_rate == 1)
         # safety_rates.append(safety_rate)
-            
-
 
         # save trained weights
         if i_step % SAVE_STEPS == 0:
