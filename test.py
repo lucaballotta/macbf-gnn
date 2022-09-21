@@ -150,13 +150,13 @@ def main():
                 # break if the agents are already very close to their goals
                 if np.amax(
                     np.linalg.norm(states_curr[:, :2] - goals_curr, axis=1)
-                    ) < DIST_MIN_CHECK / 3:
+                    ) < DIST_GOAL_TOL / 3:
                     time.sleep(1)
                     break
                 # if the agents are very close to their goals, safely switch to LQR
                 if np.mean(
                     np.linalg.norm(states_curr[:, :2] - goals_curr, axis=1)
-                    ) < DIST_MIN_CHECK / 2:
+                    ) < DIST_GOAL_TOL / 2:
                     K = np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3)
                     s_ref = np.concatenate([states_curr[:, :2] - goals_curr, states_curr[:, 2:]], axis=1)
                     actions_lq = -s_ref.dot(K.T)
@@ -165,7 +165,7 @@ def main():
             else:
                 if np.mean(
                     np.linalg.norm(states_curr[:, :2] - goals_curr, axis=1)
-                    ) < DIST_MIN_CHECK:
+                    ) < DIST_GOAL_TOL:
                     break
 
         dist_errors.append(np.mean(np.linalg.norm(states_curr[:, :2] - goals_curr, axis=1)))
@@ -187,7 +187,7 @@ def main():
             safety_ratios_epoch_lqr.append(safety_ratio)
             if np.mean(
                     np.linalg.norm(states_curr[:, :2] - goals_curr, axis=1)
-                    ) < DIST_MIN_CHECK / 3:
+                    ) < DIST_GOAL_TOL / 3:
                     break
 
         safety_reward_baseline.append(np.mean(

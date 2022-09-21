@@ -101,20 +101,17 @@ def main():
                 actions_curr = actions_curr + noise
 
             # store the communication graph
-            edge_index, edge_attr = build_comm_links(states_curr, num_agents)
+            edge_index, edge_attr = communication_links(states_curr, num_agents)
             data_traj.append(Data(x=torch.ones_like(states_curr), edge_index=edge_index, edge_attr=edge_attr))
 
             # simulate the system for one step
             states_curr = states_curr + dynamics(states_curr, actions_curr) * TIME_STEP
             actions_trajectory.append(actions_curr)
-
-            # states_trajectory = states_curr
-            # goals_trajectory = goals_curr
-            # actions_trajectory = actions_curr
-
-            if torch.mean(
+            
+            # check if agents have reached goals
+            if torch.maximum(
                 torch.norm(states_curr[:, :2] - goals_curr, dim=1)
-            ) < DIST_MIN_CHECK:
+            ) < DIST_GOAL_TOL:
                 break
 
         states_trajectory = torch.cat(states_trajectory, dim=0)
@@ -124,14 +121,13 @@ def main():
         # compute loss for batch of trajectory states
         data_traj = Batch.from_data_list(data_traj)
         h_trajectory = cbf_certificate(data_traj)
-        loss_dang, loss_safe, acc_dang, acc_safe = loss_barrier(h_trajectory, states_trajectory)
-        loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv = \
-            loss_derivatives(states_trajectory, actions_trajectory, h_trajectory, cbf_certificate)
+        loss_dang, loss_safe, _, _ = loss_barrier(h_trajectory, states_trajectory)
+        loss_dang_deriv, loss_safe_deriv, _, _ = loss_derivatives(h_trajectory, states_trajectory)
         loss_action_iter = loss_actions(states_trajectory, goals_trajectory, actions_trajectory)
         loss_list_iter = [2 * loss_dang, loss_safe, 2 * loss_dang_deriv, loss_safe_deriv, 0.01 * loss_action_iter]
-        acc_list_iter = [acc_dang, acc_safe, acc_dang_deriv, acc_safe_deriv]
+        # acc_list_iter = [acc_dang, acc_safe, acc_dang_deriv, acc_safe_deriv]
         loss_lists_np.append(loss_list_iter)
-        acc_lists_np.append(acc_list_iter)
+        # acc_lists_np.append(acc_list_iter)
         # total_loss_iter = 10 * torch.add(loss_list_iter + weight_loss)
         # total_loss_iter = 10 * torch.add(loss_list_iter)
         # total_loss_iter = torch.Tensor(10 * loss_list_iter)
