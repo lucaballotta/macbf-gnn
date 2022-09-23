@@ -133,63 +133,16 @@ def loss_barrier(h_trajectory, states_trajectory):
 
     loss_dang = torch.Tensor([0.0])
     loss_safe = torch.Tensor([0.0])
-    acc_dang_all = torch.Tensor()
-    acc_safe_all = torch.Tensor()
-    no_dang_sample = True
-    no_safe_sample = True
-    for count, states in enumerate(states_trajectory):
-        h = h_trajectory[count]
-        dang_mask = ttc_dangerous_mask(states)
-        dang_mask_reshape = torch.reshape(dang_mask, (-1,))
-
-        dang_h = torch.masked_select(h, dang_mask_reshape)
-        safe_h = torch.masked_select(h, torch.logical_not(dang_mask_reshape))
-
-        num_dang = dang_h.size(dim=0)
-        num_safe = safe_h.size(dim=0)
-        
-        if num_dang:
-            if no_dang_sample:
-                no_dang_sample = False
-                
-            dang_max_val = torch.maximum(dang_h + GAMMA, torch.zeros_like(dang_h))
-            loss_dang_curr = torch.mean(dang_max_val)
-            torch.add(loss_dang, loss_dang_curr)
-            acc_dang_curr = torch.mean(torch.less_equal(dang_h, 0))
-            acc_dang_all = torch.cat([acc_dang_all, acc_dang_curr])
-
-        if num_safe:
-            if no_safe_sample:
-                no_safe_sample = False
-                
-            safe_max_val = torch.maximum(-safe_h + GAMMA, torch.zeros_like(safe_h))
-            loss_safe_curr = torch.mean(safe_max_val)
-            torch.add(loss_safe, loss_safe_curr)
-            acc_safe_curr = torch.mean(torch.greater(safe_h, 0))
-            acc_safe_all = torch.cat([acc_safe_all, acc_safe_curr])
-            
-    if no_dang_sample:
-        acc_dang = torch.Tensor([-1.0])
-        
-    else:
-        acc_dang = torch.mean(acc_dang_all)
-        
-    if no_safe_sample:
-        acc_safe = torch.Tensor([-1.0])
-        
-    else:
-        acc_safe = torch.mean(acc_safe_all)
-
-    return loss_dang, loss_safe, acc_dang, acc_safe
-
-
-def loss_derivatives(h_trajectory, states_trajectory):
-    loss_dang_deriv = torch.Tensor([0.0])
     loss_safe_deriv = torch.Tensor([0.0])
-    acc_dang_deriv_all = torch.Tensor()
-    acc_safe_deriv_all = torch.Tensor()
+    acc_dang = torch.Tensor([0.0])
+    acc_safe = torch.Tensor([0.0])
+    acc_safe_deriv = torch.Tensor([0.0])
     no_dang_sample = True
     no_safe_sample = True
+    step_dang = 0
+    step_safe = 0
+    
+    # all states for which derivative of h exists
     for i in range(len(states_trajectory)-1):
         states = states_trajectory[i]
         dang_mask = ttc_dangerous_mask(states)
@@ -199,59 +152,139 @@ def loss_derivatives(h_trajectory, states_trajectory):
         h_next = h_trajectory[i + 1]
         h_deriv = (h_next - h) / TIME_STEP
 
-        dang_deriv = torch.masked_select(h_deriv, dang_mask_reshape)
-        safe_deriv = torch.masked_select(h_deriv, torch.logical_not(dang_mask_reshape))
+        h_dang = torch.masked_select(h, dang_mask_reshape)
+        h_safe = torch.masked_select(h, torch.logical_not(dang_mask_reshape))
+        h_deriv_safe = torch.masked_select(h_deriv, torch.logical_not(dang_mask_reshape))
 
-        num_dang = dang_deriv.size(dim=0)
-        num_safe = safe_deriv.size(dim=0)
-
+        num_dang = h_dang.size(dim=0)
+        num_safe = h_safe.size(dim=0)
+        
         if num_dang:
             if no_dang_sample:
                 no_dang_sample = False
-                
-            dang_deriv_max_val = torch.maximum(dang_deriv + GAMMA, torch.zeros_like(dang_deriv))
-            loss_dang_deriv_curr = torch.mean(dang_deriv_max_val)
-            torch.add(loss_safe_deriv, loss_dang_deriv_curr)
-            acc_dang_deriv_curr = torch.mean(torch.greater_equal(dang_deriv, 0))
-            acc_dang_deriv_all = torch.cat([acc_dang_deriv_all, acc_dang_deriv_curr])
+            
+            step_dang += 1
+            update_loss(h_dang, GAMMA, loss_dang, acc_dang, step_dang)
 
         if num_safe:
             if no_safe_sample:
                 no_safe_sample = False
                 
-            safe_deriv_max_val = torch.maximum(-safe_deriv + GAMMA, torch.zeros_like(safe_deriv))
-            loss_safe_deriv_curr = torch.mean(safe_deriv_max_val)
-            torch.add(loss_safe_deriv, loss_safe_deriv_curr)
-            acc_safe_deriv_curr = torch.mean(torch.greater(safe_deriv, 0))
-            acc_safe_deriv_all = torch.cat([acc_safe_deriv_all, acc_safe_deriv_curr])
+            step_safe += 1
+            update_loss(-h_safe, GAMMA, loss_safe, acc_safe, step_safe)
+            update_loss(-h_deriv_safe, GAMMA - ALPHA_CBF * h, loss_safe_deriv, acc_safe_deriv, step_safe)
+            
+    # last state
+    states = states_trajectory[-1]
+    dang_mask = ttc_dangerous_mask(states)
+    dang_mask_reshape = torch.reshape(dang_mask, (-1,))
+    
+    h = h_trajectory[-1]
+
+    h_dang = torch.masked_select(h, dang_mask_reshape)
+    h_safe = torch.masked_select(h, torch.logical_not(dang_mask_reshape))
+
+    num_dang = h_dang.size(dim=0)
+    num_safe = h_safe.size(dim=0)
+    
+    if num_dang:
+        if no_dang_sample:
+            no_dang_sample = False
+        
+        step_dang += 1
+        update_loss(h_dang, GAMMA, loss_dang, acc_dang, step_dang)
+
+    if num_safe:
+        if no_safe_sample:
+            no_safe_sample = False
+            
+        step_safe += 1
+        update_loss(-h_safe, GAMMA, loss_safe, acc_safe, step_safe)
+            
+    if no_dang_sample:
+        acc_dang = torch.Tensor([-1.0])
+        
+    if no_safe_sample:
+        acc_safe = torch.Tensor([-1.0])
+        acc_safe_deriv = torch.Tensor([-1.0])
+
+    return loss_dang, loss_safe, loss_safe_deriv, acc_dang, acc_safe, acc_safe_deriv
+
+
+def update_loss(h, slack, loss, acc, step):
+    max_val = torch.maximum(h + slack, torch.tensor(0))
+    loss_curr = torch.mean(max_val)
+    torch.add(loss, (loss_curr - loss) / step)  # online average of losses along trajectory
+    acc_curr = torch.mean(torch.less(h, 0))
+    torch.add(acc, (acc_curr - acc) / step)
+
+
+def loss_derivatives(h_trajectory, states_trajectory):
+    loss_dang_deriv = torch.Tensor([0.0])
+    loss_safe_deriv = torch.Tensor([0.0])
+    acc_dang_deriv = torch.Tensor([0.0])
+    acc_safe_deriv = torch.Tensor([0.0])
+    no_dang_sample = True
+    no_safe_sample = True
+    step_dang = 0
+    step_safe = 0
+    
+    for i in range(len(states_trajectory)-1):
+        states = states_trajectory[i]
+        dang_mask = ttc_dangerous_mask(states)
+        dang_mask_reshape = torch.reshape(dang_mask, (-1,))
+        
+        h = h_trajectory[i]
+        h_next = h_trajectory[i + 1]
+        h_deriv = (h_next - h) / TIME_STEP
+
+        h_deriv_dang = torch.masked_select(h_deriv, dang_mask_reshape)
+        h_deriv_safe = torch.masked_select(h_deriv, torch.logical_not(dang_mask_reshape))
+
+        num_dang = h_deriv_dang.size(dim=0)
+        num_safe = h_deriv_safe.size(dim=0)
+
+        if num_dang:
+            if no_dang_sample:
+                no_dang_sample = False
+                
+            step_dang += 1
+            update_loss(h_deriv_dang, GAMMA + ALPHA_CBF * h, loss_dang_deriv, acc_dang_deriv, step_dang)
+
+        if num_safe:
+            if no_safe_sample:
+                no_safe_sample = False
+                
+            step_safe += 1
+            update_loss(-h_deriv_safe, GAMMA - ALPHA_CBF * h, loss_safe_deriv, acc_safe_deriv, step_safe)
             
     if no_dang_sample:
         acc_dang_deriv = torch.Tensor([-1.0])
         
-    else:
-        acc_dang_deriv = torch.mean(acc_dang_deriv_all)
-        
     if no_safe_sample:
         acc_safe_deriv = torch.Tensor([-1.0])
-        
-    else:
-        acc_safe_deriv = torch.mean(acc_safe_deriv_all)
 
     return loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv
 
 
-def loss_actions(states, goals, actions):
-    state_gain = np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3)
-    state_gain = torch.from_numpy(state_gain).type_as(states)
-    state_gain = state_gain.type(torch.float32)
-    s_ref = torch.concat([states[:, :2] - goals, states[:, 2:]], dim=1)
-    action_ref = torch.matmul(s_ref, torch.transpose(state_gain, 0, 1))
-    action_ref_norm = torch.sum(torch.square(action_ref), dim=1)
-    action_net_norm = torch.sum(torch.square(actions), dim=1)
-    norm_diff = torch.abs(action_net_norm - action_ref_norm)
-    loss = torch.mean(norm_diff)
+def loss_actions(states_trajectory, goals_trajectory, actions_trajectory):
+    loss_actions_traj = 0
+    for i in range(len(states_trajectory)):
+        states = states_trajectory[i]
+        goals = goals_trajectory[i]
+        actions = actions_trajectory[i]
+        s_ref = torch.concat([states[:, :2] - goals, states[:, 2:]], dim=1)
+        actions_ref = torch.matmul(s_ref, torch.transpose(FEEDBACK_GAIN, 0, 1))
+        # actions_diff = actions - actions_ref
+        # actions_diff_norm = torch.norm(actions_diff, dim = 1)
+        # loss_actions_curr = torch.sum(actions_diff_norm)
+        action_ref_norm = torch.sum(torch.square(actions_ref), dim=1)
+        action_net_norm = torch.sum(torch.square(actions), dim=1)
+        norm_diff = torch.abs(action_net_norm - action_ref_norm)
+        loss_actions_curr = torch.mean(norm_diff)
+        torch.add(loss_actions_traj, (loss_actions_curr - loss_actions_traj) / (i + 1))
 
-    return loss
+    return loss_actions_traj
 
 
 def ttc_dangerous_mask(states):

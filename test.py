@@ -121,7 +121,7 @@ def main():
         safety_lq = []
         
         # run INNER_LOOPS steps to reach the current goals
-        for _ in range(INNER_LOOPS):
+        for _ in range(BATCH_SIZE_MAX):
             
             # compute the control input
             actions_curr = cbf_controller(states_curr, goals_curr)
@@ -175,7 +175,7 @@ def main():
 
         # run the simulation using LQR controller without considering collision
         states_curr, goals_curr = np.copy(states_init), np.copy(goals)
-        for _ in range(INNER_LOOPS):
+        for _ in range(BATCH_SIZE_MAX):
             s_ref = np.concatenate([states_curr[:, :2] - goals_curr, states_curr[:, 2:]], axis=1)
             actions_lq = -s_ref.dot(K.T)
             states_curr += dynamics(states_curr, actions_lq) * TIME_STEP
