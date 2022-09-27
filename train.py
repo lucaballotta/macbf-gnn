@@ -56,7 +56,6 @@ def main():
     model_path = os.path.join(log_dir, 'models')
 
     # create controller and CBF
-    global NUM_AGENTS
     NUM_AGENTS = args.num_agents
     feat_dim = 32
     cbf_controller = controller_gnn.Controller(in_dim=4).to(device)
@@ -79,7 +78,7 @@ def main():
     torch.autograd.set_detect_anomaly(True)
 
     # jointly train controller and CBF
-    for i_step in tqdm(range(1, TRAIN_STEPS + 1)):
+    for i_train in tqdm(range(1, TRAIN_STEPS + 1)):
 
         # generate initial states and goals
         states_curr, goals_curr = generate_data(args.num_agents)
@@ -91,7 +90,7 @@ def main():
         data_trajectory = []
 
         # run system for INNER_LOOPS steps to generate consistent trajectory
-        for _ in range(BATCH_SIZE_MAX):
+        for i_batch in range(BATCH_SIZE_MAX):
             states_trajectory.append(states_curr)
             goals_trajectory.append(goals_curr)
 
@@ -114,17 +113,21 @@ def main():
                 torch.norm(states_curr[:, :2] - goals_curr, dim=1)
             ) < DIST_GOAL_TOL:
                 break
-                
+        
         states_trajectory = torch.cat(states_trajectory, dim=0)
         goals_trajectory = torch.cat(goals_trajectory, dim=0)
         actions_trajectory = torch.cat(actions_trajectory, dim=0)
-
+        
         # compute loss for batch of trajectory states
         data_trajectory = Batch.from_data_list(data_trajectory)
         h_trajectory = cbf_certificate(data_trajectory)
-        loss_dang_traj, loss_safe_traj, loss_safe_deriv_traj, _, _, _ = loss_barrier(h_trajectory, states_trajectory)
-        # loss_dang_deriv, loss_safe_deriv, _, _ = loss_derivatives(h_trajectory, states_trajectory)
+        loss_dang_traj, loss_safe_traj, loss_safe_deriv_traj, _, _, _ = loss_cbf(h_trajectory, states_trajectory, i_batch+1, NUM_AGENTS)
+        # loss_safe_deriv, _ = loss_cbf_deriv(h_trajectory, states_trajectory)
         loss_action_traj = loss_actions(states_trajectory, goals_trajectory, actions_trajectory)
+        print('loss dang', loss_dang_traj.item(),
+              'loss safe', loss_safe_traj.item(),
+              'loss deriv', loss_safe_deriv_traj.item(),
+              'loss actions', loss_action_traj.item())
         loss_list_traj = [2 * loss_dang_traj, loss_safe_traj, loss_safe_deriv_traj, 0.01 * loss_action_traj]
         # loss_list_iter = [2 * loss_dang, loss_safe, 2 * loss_dang_deriv, loss_safe_deriv, 0.01 * loss_action_iter]
         # acc_list_iter = [acc_dang, acc_safe, acc_dang_deriv, acc_safe_deriv]
@@ -149,9 +152,9 @@ def main():
         # safety_rates.append(safety_rate)
 
         # save trained weights
-        if i_step % SAVE_STEPS == 0:
-            torch.save(cbf_certificate, os.path.join(model_path, f'step{i_step}_certificate.pkl'))
-            torch.save(cbf_controller, os.path.join(model_path, f'step{i_step}_controller.pkl'))
+        if i_train % SAVE_STEPS == 0:
+            torch.save(cbf_certificate, os.path.join(model_path, f'step{i_train}_certificate.pkl'))
+            torch.save(cbf_controller, os.path.join(model_path, f'step{i_train}_controller.pkl'))
 
 
 if __name__ == '__main__':

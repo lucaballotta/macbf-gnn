@@ -140,8 +140,8 @@ def main():
             
             # compute accuracies
             h_curr, _ = cbf_certificate(states_curr)
-            (_, _, acc_dang, acc_safe) = loss_barrier(h_curr, states_curr)
-            (_, _, acc_dang_deriv, acc_safe_deriv) = loss_derivatives(
+            (_, _, acc_dang, acc_safe) = loss_cbf(h_curr, states_curr)
+            (_, _, acc_dang_deriv, acc_safe_deriv) = loss_cbf_deriv(
                 states_curr, actions_curr, h_curr, cbf_certificate)
             acc_list = [acc_dang, acc_safe, acc_dang_deriv, acc_safe_deriv]
             accuracy_lists.append(acc_list)
