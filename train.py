@@ -94,16 +94,17 @@ def main():
             states_trajectory.append(states_curr)
             goals_trajectory.append(goals_curr)
 
+            # store the communication graph
+            edge_index, edge_attr = communication_links(states_curr, NUM_AGENTS)
+            data_curr = Data(x=torch.ones_like(states_curr), edge_index=edge_index, edge_attr=edge_attr, goals=goals_curr)
+            data_trajectory.append(data_curr.copy())
+
             # compute the control input using the trained controller
-            actions_curr = cbf_controller(states_curr, goals_curr)
+            actions_curr = cbf_controller(data_curr)
             if np.random.uniform() < ADD_NOISE_PROB:
                 noise = torch.randn(actions_curr.shape) * NOISE_SCALE
                 actions_curr = actions_curr + noise
-
-            # store the communication graph
-            edge_index, edge_attr = communication_links(states_curr, NUM_AGENTS)
-            data_trajectory.append(Data(x=torch.ones_like(states_curr), edge_index=edge_index, edge_attr=edge_attr))
-
+                
             # simulate the system for one step
             states_curr = states_curr + dynamics(states_curr, actions_curr) * TIME_STEP
             actions_trajectory.append(actions_curr)

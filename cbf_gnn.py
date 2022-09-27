@@ -40,7 +40,6 @@ class CBFGNN(nn.Module):
         h: (bs, n)
             CBF values for all agents
         """
-        # define graph connectivity based on communication radius
         x = self.feat_transformer(data.x, data.edge_attr, data.edge_index)
         h = self.feat_2_CBF(x)
         return h.reshape(-1, self.num_agents)
