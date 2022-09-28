@@ -175,7 +175,7 @@ def loss_cbf(h_trajectory, states_trajectory, batch_size, num_agents):
 
 def loss_actions(states_trajectory, goals_trajectory, actions_trajectory):
     feedback = torch.concat([states_trajectory[:, :2] - goals_trajectory, states_trajectory[:, 2:]], dim=1)
-    actions_ref = torch.matmul(feedback, torch.transpose(FEEDBACK_GAIN, 0, 1))
+    actions_ref = torch.matmul(feedback, torch.t(FEEDBACK_GAIN))
     actions_diff = actions_trajectory - actions_ref
     actions_diff_norm = torch.norm(actions_diff, dim=1)
     loss_actions_traj = torch.mean(actions_diff_norm)

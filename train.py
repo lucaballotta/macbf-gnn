@@ -11,8 +11,8 @@ from torch_geometric.data import Data
 from torch_geometric.data import Batch
 from torch_geometric.loader import DataLoader
 
-import controller_gnn
-import cbf_gnn
+from controller_gnn import Controller
+from cbf_gnn import CBF
 
 from utils import *
 from config import *
@@ -55,13 +55,12 @@ def main():
 
     model_path = os.path.join(log_dir, 'models')
 
-    # create controller and CBF
+    # create CBF and controller
     NUM_AGENTS = args.num_agents
-    feat_dim = 32
-    cbf_controller = controller_gnn.Controller(in_dim=4).to(device)
-    # cbf_certificate = cbf_gnn.GNN(feat_dim=feat_dim, phi_dim=feat_dim, aggr_dim=feat_dim,
-    #                               num_agents=num_agents, state_dim=4).to(device)
-    cbf_certificate = cbf_gnn.CBFGNN(state_dim=4, phi_dim=feat_dim, num_agents=NUM_AGENTS).to(device)
+    cbf_certificate = CBF(
+        node_dim=STATE_DIM, edge_dim=STATE_DIM, phi_dim=FEAT_DIM, num_agents=NUM_AGENTS).to(device)
+    cbf_controller = Controller(
+        node_dim=H_DIM + GOAL_DIM, edge_dim=STATE_DIM, phi_dim=FEAT_DIM, num_agents=NUM_AGENTS, action_dim=ACTION_DIM).to(device)
 
     # create optimizers
     optim_controller = optim.Adam(cbf_controller.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
@@ -96,11 +95,14 @@ def main():
 
             # store the communication graph
             edge_index, edge_attr = communication_links(states_curr, NUM_AGENTS)
-            data_curr = Data(x=torch.ones_like(states_curr), edge_index=edge_index, edge_attr=edge_attr, goals=goals_curr)
-            data_trajectory.append(data_curr.copy())
+            data_step_cbf = Data(x=torch.ones_like(states_curr), edge_index=edge_index, edge_attr=edge_attr)
+            data_trajectory.append(data_step_cbf)
 
             # compute the control input using the trained controller
-            actions_curr = cbf_controller(data_curr)
+            h_curr = cbf_certificate(data_step_cbf)
+            node_feat = torch.cat([torch.t(h_curr), goals_curr], dim=1)
+            data_step_controller = Data(x=node_feat, edge_index=edge_index, edge_attr=edge_attr)
+            actions_curr = cbf_controller(data_step_controller)
             if np.random.uniform() < ADD_NOISE_PROB:
                 noise = torch.randn(actions_curr.shape) * NOISE_SCALE
                 actions_curr = actions_curr + noise

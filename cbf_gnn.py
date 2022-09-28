@@ -12,16 +12,16 @@ from config import *
 from MLP import MLP
 
 
-class CBFGNN(nn.Module):
+class CBF(nn.Module):
 
-    def __init__(self, state_dim: int, phi_dim: int, num_agents: int):
-        super().__init__()
+    def __init__(self, node_dim: int, edge_dim: int, phi_dim: int, num_agents: int):
+        super(CBF, self).__init__()
         self.num_agents = num_agents
         self.feat_transformer = gnn.Sequential('x, edge_attr, edge_index', [
-            (CBFGNNLayer(node_dim=state_dim, edge_dim=state_dim, output_dim=64, phi_dim=phi_dim),
+            (CBFGNNLayer(node_dim=node_dim, edge_dim=edge_dim, output_dim=64, phi_dim=phi_dim),
              'x, edge_attr, edge_index -> x'),
             nn.ReLU(),
-            (CBFGNNLayer(node_dim=64, edge_dim=state_dim, output_dim=64, phi_dim=phi_dim),
+            (CBFGNNLayer(node_dim=64, edge_dim=edge_dim, output_dim=64, phi_dim=phi_dim),
              'x, edge_attr, edge_index -> x'),
         ])
         self.feat_2_CBF = MLP(in_channels=64, out_channels=1, hidden_layers=(64, 64))

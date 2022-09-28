@@ -1,36 +1,50 @@
 import numpy as np
 import torch
 
+# System dynamics
+STATE_DIM = 4
+GOAL_DIM = 2
+ACTION_DIM = 2
 TIME_STEP = 1e-1
-WEIGHT_DECAY = 1e-8
 
-ALPHA_CBF = 1.0
-GAMMA = 1e-3
-
-DIST_MIN_THRES = 0.07
-DIST_GOAL_TOL = 0.07
-DIST_MIN_ENLARGED = 0.07
-
+# Communication graph
 OBS_RADIUS = 1.0
 COMM_RADIUS = 1.0
 TOP_K = 12
 
+# GNN
+FEAT_DIM = 32
+
+# Controller
+FEEDBACK_GAIN = np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3)
+FEEDBACK_GAIN = torch.from_numpy(FEEDBACK_GAIN)
+FEEDBACK_GAIN = FEEDBACK_GAIN.type(torch.float32)
+
+# CBF
+H_DIM = 1
+ALPHA_CBF = 1.0
+GAMMA = 1e-3
+
+# Safety requirements
+DIST_MIN_THRES = 0.07
+DIST_GOAL_TOL = 0.07
+DIST_MIN_ENLARGED = 0.07
+
 TIME_TO_COLLISION = 2.0
 TIME_TO_COLLISION_CHECK = 0.1
 
+# Training params
 TRAIN_STEPS = 70000
 EVALUATE_STEPS = 10
 BATCH_SIZE_MAX = 50
 REFINE_LOOPS = 50
 REFINE_LEARNING_RATE = 0.3
 
-LEARNING_RATE = 1e-4
-DISPLAY_STEPS = 200
-SAVE_STEPS = 1000
-
 ADD_NOISE_PROB = 0.0
 NOISE_SCALE = 0.3
 
-FEEDBACK_GAIN = np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3)
-FEEDBACK_GAIN = torch.from_numpy(FEEDBACK_GAIN)
-FEEDBACK_GAIN = FEEDBACK_GAIN.type(torch.float32)
+WEIGHT_DECAY = 1e-8
+LEARNING_RATE = 1e-4
+
+DISPLAY_STEPS = 200
+SAVE_STEPS = 1000
