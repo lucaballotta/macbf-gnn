@@ -60,7 +60,7 @@ def main():
     cbf_certificate = CBF(
         node_dim=STATE_DIM, edge_dim=STATE_DIM, phi_dim=FEAT_DIM, num_agents=NUM_AGENTS).to(device)
     cbf_controller = Controller(
-        node_dim=H_DIM + GOAL_DIM, edge_dim=STATE_DIM, phi_dim=FEAT_DIM, num_agents=NUM_AGENTS, action_dim=ACTION_DIM).to(device)
+        node_dim=STATE_DIM, edge_dim=STATE_DIM, phi_dim=FEAT_DIM, num_agents=NUM_AGENTS, action_dim=ACTION_DIM).to(device)
 
     # create optimizers
     optim_controller = optim.Adam(cbf_controller.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
@@ -85,31 +85,41 @@ def main():
         goals_curr = torch.from_numpy(goals_curr).to(device)
         states_trajectory = []
         goals_trajectory = []
-        actions_trajectory = []
+        actions_diff_trajectory = []
         data_trajectory = []
 
         # run system for INNER_LOOPS steps to generate consistent trajectory
-        for i_batch in range(BATCH_SIZE_MAX):
-            states_trajectory.append(states_curr)
-            goals_trajectory.append(goals_curr)
+        skipped_steps = 0
+        for _ in range(BATCH_SIZE_MAX):
+            feedback_curr = torch.concat([states_curr[:, :2] - goals_curr, states_curr[:, 2:]], dim=1)
+            actions_ref_curr = torch.matmul(feedback_curr, torch.t(FEEDBACK_GAIN))
 
-            # store the communication graph
+            # build communication graph
             edge_index, edge_attr = communication_links(states_curr, NUM_AGENTS)
-            data_step_cbf = Data(x=torch.ones_like(states_curr), edge_index=edge_index, edge_attr=edge_attr)
-            data_trajectory.append(data_step_cbf)
+            if edge_index.numel():
+                states_trajectory.append(states_curr)
+                goals_trajectory.append(goals_curr)
+                data = Data(x=torch.ones_like(states_curr), edge_index=edge_index, edge_attr=edge_attr)
+                data_trajectory.append(data)
 
-            # compute the control input using the trained controller
-            h_curr = cbf_certificate(data_step_cbf)
-            node_feat = torch.cat([torch.t(h_curr), goals_curr], dim=1)
-            data_step_controller = Data(x=node_feat, edge_index=edge_index, edge_attr=edge_attr)
-            actions_curr = cbf_controller(data_step_controller)
-            if np.random.uniform() < ADD_NOISE_PROB:
-                noise = torch.randn(actions_curr.shape) * NOISE_SCALE
-                actions_curr = actions_curr + noise
+                # compute the control input using the trained controller
+                actions_diff_curr = cbf_controller(data)
+                if np.random.uniform() < ADD_NOISE_PROB:
+                    noise = torch.randn(actions_diff_curr.shape) * NOISE_SCALE
+                    actions_diff_curr = actions_diff_curr + noise
+                    
+                actions_diff_trajectory.append(actions_diff_curr)
+                actions_curr = actions_ref_curr + actions_diff_curr
+                
+            else:
+                
+                # if agents cannot communicate,
+                # skip step in training and apply reference control actions
+                skipped_steps += 1
+                actions_curr = actions_ref_curr
                 
             # simulate the system for one step
             states_curr = states_curr + dynamics(states_curr, actions_curr) * TIME_STEP
-            actions_trajectory.append(actions_curr)
             
             # check if agents have reached goals
             if torch.max(
@@ -117,20 +127,17 @@ def main():
             ) < DIST_GOAL_TOL:
                 break
         
+        batch_size = len(states_trajectory)
         states_trajectory = torch.cat(states_trajectory, dim=0)
         goals_trajectory = torch.cat(goals_trajectory, dim=0)
-        actions_trajectory = torch.cat(actions_trajectory, dim=0)
+        actions_diff_trajectory = torch.cat(actions_diff_trajectory, dim=0)
         
         # compute loss for batch of trajectory states
         data_trajectory = Batch.from_data_list(data_trajectory)
         h_trajectory = cbf_certificate(data_trajectory)
-        loss_dang_traj, loss_safe_traj, loss_safe_deriv_traj, _, _, _ = loss_cbf(h_trajectory, states_trajectory, i_batch+1, NUM_AGENTS)
+        loss_dang_traj, loss_safe_traj, loss_safe_deriv_traj, _, _, _ = loss_cbf(h_trajectory, states_trajectory, batch_size, NUM_AGENTS)
         # loss_safe_deriv, _ = loss_cbf_deriv(h_trajectory, states_trajectory)
-        loss_action_traj = loss_actions(states_trajectory, goals_trajectory, actions_trajectory)
-        print('loss dang', loss_dang_traj.item(),
-              'loss safe', loss_safe_traj.item(),
-              'loss deriv', loss_safe_deriv_traj.item(),
-              'loss actions', loss_action_traj.item())
+        loss_action_traj = loss_actions(actions_diff_trajectory)
         loss_list_traj = [2 * loss_dang_traj, loss_safe_traj, loss_safe_deriv_traj, 0.01 * loss_action_traj]
         # loss_list_iter = [2 * loss_dang, loss_safe, 2 * loss_dang_deriv, loss_safe_deriv, 0.01 * loss_action_iter]
         # acc_list_iter = [acc_dang, acc_safe, acc_dang_deriv, acc_safe_deriv]

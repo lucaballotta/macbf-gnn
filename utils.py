@@ -1,21 +1,7 @@
 import numpy as np
 import torch
-from torch_geometric.nn import TransformerConv
+
 from config import *
-from torch import Tensor
-
-
-'''class AttentionNet(Aggregation):
-
-    def __init__(self, in_dim: int) -> None:
-        super().__init__()
-        self.aggregator = TransformerConv(in_channels=in_dim, out_channels=in_dim)
-
-
-    def forward(self, x: torch.Tensor, 
-                edge_index: torch.Union[torch.Tensor, torch.SparseTensor]) -> torch.Tensor:
-        return self.aggregator(x, edge_index)'''
-
 
 def communication_links(states, num_agents):
 
@@ -173,18 +159,15 @@ def loss_cbf(h_trajectory, states_trajectory, batch_size, num_agents):
     return loss_dang, loss_safe, loss_safe_deriv, acc_dang, acc_safe, acc_safe_deriv
 
 
-def loss_actions(states_trajectory, goals_trajectory, actions_trajectory):
-    feedback = torch.concat([states_trajectory[:, :2] - goals_trajectory, states_trajectory[:, 2:]], dim=1)
-    actions_ref = torch.matmul(feedback, torch.t(FEEDBACK_GAIN))
-    actions_diff = actions_trajectory - actions_ref
-    actions_diff_norm = torch.norm(actions_diff, dim=1)
-    loss_actions_traj = torch.mean(actions_diff_norm)
+def loss_actions(actions_diff_trajectory):
+    actions_diff_trajectory_norm = torch.norm(actions_diff_trajectory, dim=1)
+    loss_actions = torch.mean(actions_diff_trajectory_norm)
     # action_ref_norm = torch.sum(torch.square(actions_ref), dim=1)
     # action_net_norm = torch.sum(torch.square(actions_trajectory), dim=1)
     # norm_diff = torch.abs(action_net_norm - action_ref_norm)
     # loss_actions_traj = torch.mean(norm_diff)
 
-    return loss_actions_traj
+    return loss_actions
 
 
 def ttc_dangerous_mask(states):
