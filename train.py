@@ -1,4 +1,3 @@
-from ast import Num
 import numpy as np
 import torch
 import torch.optim as optim
@@ -9,7 +8,6 @@ import datetime
 from tqdm import tqdm
 from torch_geometric.data import Data
 from torch_geometric.data import Batch
-from torch_geometric.loader import DataLoader
 
 from controller_gnn import Controller
 from cbf_gnn import CBF
@@ -61,6 +59,9 @@ def main():
         node_dim=STATE_DIM, edge_dim=STATE_DIM, phi_dim=FEAT_DIM, num_agents=NUM_AGENTS).to(device)
     cbf_controller = Controller(
         node_dim=STATE_DIM, edge_dim=STATE_DIM, phi_dim=FEAT_DIM, num_agents=NUM_AGENTS, action_dim=ACTION_DIM).to(device)
+    FEEDBACK_GAIN = np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3)
+    FEEDBACK_GAIN = torch.from_numpy(FEEDBACK_GAIN).to(device)
+    FEEDBACK_GAIN = FEEDBACK_GAIN.type(torch.float32)
 
     # create optimizers
     optim_controller = optim.Adam(cbf_controller.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
@@ -95,11 +96,11 @@ def main():
             actions_ref_curr = torch.matmul(feedback_curr, torch.t(FEEDBACK_GAIN))
 
             # build communication graph
-            edge_index, edge_attr = communication_links(states_curr, NUM_AGENTS)
+            edge_index, edge_attr = communication_links(states_curr, NUM_AGENTS, device)
             if edge_index.numel():
                 states_trajectory.append(states_curr)
                 goals_trajectory.append(goals_curr)
-                data = Data(x=torch.ones_like(states_curr), edge_index=edge_index, edge_attr=edge_attr)
+                data = Data(x=torch.ones_like(states_curr).to(device), edge_index=edge_index, edge_attr=edge_attr)
                 data_trajectory.append(data)
 
                 # compute the control input using the trained controller

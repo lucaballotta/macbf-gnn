@@ -3,7 +3,7 @@ import torch
 
 from config import *
 
-def communication_links(states, num_agents):
+def communication_links(states, num_agents, device):
 
     # compute inter-agent distances
     rel_position = torch.unsqueeze(states[:, :2], dim=1) - torch.unsqueeze(states[:, :2], dim=0)
@@ -13,9 +13,9 @@ def communication_links(states, num_agents):
     mask = torch.squeeze((torch.less_equal(dist, COMM_RADIUS)) & (torch.greater(dist, 0)))     
 
     # build communication graph
-    edge_sources = torch.tensor([], dtype=torch.int64)
-    edge_sinks = torch.tensor([], dtype=torch.int64)
-    edge_attrs = torch.tensor([]).type_as(states)
+    edge_sources = torch.tensor([], dtype=torch.int64).to(device)
+    edge_sinks = torch.tensor([], dtype=torch.int64).to(device)
+    edge_attrs = torch.tensor([]).type_as(states).to(device)
     
     for agent in range(num_agents):
         neighs = torch.cat(torch.where(mask[agent]), dim=0)

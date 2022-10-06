@@ -15,11 +15,6 @@ TOP_K = 12
 # GNN
 FEAT_DIM = 32
 
-# Controller
-FEEDBACK_GAIN = np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3)
-FEEDBACK_GAIN = torch.from_numpy(FEEDBACK_GAIN)
-FEEDBACK_GAIN = FEEDBACK_GAIN.type(torch.float32)
-
 # CBF
 H_DIM = 1
 ALPHA_CBF = 1.0
