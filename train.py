@@ -136,7 +136,7 @@ def main():
         # compute loss for batch of trajectory states
         data_trajectory = Batch.from_data_list(data_trajectory)
         h_trajectory = cbf_certificate(data_trajectory)
-        loss_dang_traj, loss_safe_traj, loss_safe_deriv_traj, _, _, _ = loss_cbf(h_trajectory, states_trajectory, batch_size, NUM_AGENTS)
+        loss_dang_traj, loss_safe_traj, loss_safe_deriv_traj, _, _, _ = loss_cbf(h_trajectory, states_trajectory, batch_size, NUM_AGENTS, device)
         # loss_safe_deriv, _ = loss_cbf_deriv(h_trajectory, states_trajectory)
         loss_action_traj = loss_actions(actions_diff_trajectory)
         loss_list_traj = [2 * loss_dang_traj, loss_safe_traj, loss_safe_deriv_traj, 0.01 * loss_action_traj]

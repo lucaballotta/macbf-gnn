@@ -24,7 +24,7 @@ def communication_links(states, num_agents, device):
         for neigh in range(neighs.shape[0]):
             edge_attrs = torch.cat([edge_attrs, (states[neigh, :] - states[agent, :]).unsqueeze(0)], dim=0)
         
-    edge_index = torch.tensor([edge_sources.tolist(), edge_sinks.tolist()])
+    edge_index = torch.tensor([edge_sources.tolist(), edge_sinks.tolist()]).to(device)
     
     return edge_index, edge_attrs
 
@@ -109,7 +109,7 @@ def dynamics(states, actions):
     return torch.cat([states[:, 2:], actions], dim=1)
 
 
-def loss_cbf(h_trajectory, states_trajectory, batch_size, num_agents):
+def loss_cbf(h_trajectory, states_trajectory, batch_size, num_agents, device):
     """ Build the loss function for the control barrier functions.
 
     Args:
@@ -117,7 +117,7 @@ def loss_cbf(h_trajectory, states_trajectory, batch_size, num_agents):
         states_trajectory (bs x n, s): The s-dim states of n agents for bs data-points.
     """
 
-    dang_mask_traj = torch.empty((0,), dtype=torch.bool)
+    dang_mask_traj = torch.empty((0,), dtype=torch.bool).to(device)
     for i in range(batch_size):
         states = states_trajectory[i*num_agents:(i+1)*num_agents,:]
         dang_mask = ttc_dangerous_mask(states)
@@ -131,8 +131,8 @@ def loss_cbf(h_trajectory, states_trajectory, batch_size, num_agents):
         acc_dang = torch.mean(torch.less(h_dang, 0).type_as(h_dang))
         
     else:
-        loss_dang = torch.tensor(0.0)
-        acc_dang = torch.tensor(-1.0)
+        loss_dang = torch.tensor(0.0).to(device)
+        acc_dang = torch.tensor(-1.0).to(device)
         
     h_safe = torch.masked_select(h_trajectory, torch.logical_not(dang_mask_traj))
     if h_safe.numel():
@@ -141,8 +141,8 @@ def loss_cbf(h_trajectory, states_trajectory, batch_size, num_agents):
         acc_safe = torch.mean(torch.greater_equal(h_safe, 0).type_as(h_safe))
         
     else:
-        loss_safe = torch.tensor(0.0)
-        acc_safe = torch.tensor(-1.0)
+        loss_safe = torch.tensor(0.0).to(device)
+        acc_safe = torch.tensor(-1.0).to(device)
     
     h_deriv = h_trajectory[1:,:] - h_trajectory[:-1,:]
     h_deriv_safe = torch.masked_select(h_deriv, torch.logical_not(dang_mask_traj[:-1,:]))
@@ -153,8 +153,8 @@ def loss_cbf(h_trajectory, states_trajectory, batch_size, num_agents):
         acc_safe_deriv = torch.mean(torch.greater_equal(h_deriv_safe, 0).type_as(h_deriv_safe))
         
     else:
-        loss_safe_deriv = torch.tensor(0.0)
-        acc_safe_deriv = torch.tensor(-1.0)
+        loss_safe_deriv = torch.tensor(0.0).to(device)
+        acc_safe_deriv = torch.tensor(-1.0).to(device)
 
     return loss_dang, loss_safe, loss_safe_deriv, acc_dang, acc_safe, acc_safe_deriv
 
