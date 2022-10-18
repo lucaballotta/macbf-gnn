@@ -1,6 +1,3 @@
-import numpy as np
-import torch
-
 # System dynamics
 STATE_DIM = 4
 GOAL_DIM = 2
@@ -29,7 +26,7 @@ TIME_TO_COLLISION = 2.0
 TIME_TO_COLLISION_CHECK = 0.1
 
 # Training params
-TRAIN_STEPS = 70000
+TRAIN_STEPS = 50000
 EVALUATE_STEPS = 10
 BATCH_SIZE_MAX = 50
 REFINE_LOOPS = 50

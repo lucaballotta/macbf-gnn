@@ -70,7 +70,7 @@ def main():
     # networks weights regularization
     # weight_loss = [WEIGHT_DECAY * torch.square(torch.norm(v)) for v in cbf_controller.parameters()]
     # weight_loss.append([WEIGHT_DECAY * torch.square(torch.norm(v)) for v in cbf_certificate.parameters()])
-
+    
     loss_lists = []
     acc_lists_np = []
     safety_rates = []
@@ -90,7 +90,6 @@ def main():
         data_trajectory = []
 
         # run system for INNER_LOOPS steps to generate consistent trajectory
-        skipped_steps = 0
         for _ in range(BATCH_SIZE_MAX):
             feedback_curr = torch.concat([states_curr[:, :2] - goals_curr, states_curr[:, 2:]], dim=1)
             actions_ref_curr = torch.matmul(feedback_curr, torch.t(FEEDBACK_GAIN))
@@ -116,7 +115,6 @@ def main():
                 
                 # if agents cannot communicate,
                 # skip step in training and apply reference control actions
-                skipped_steps += 1
                 actions_curr = actions_ref_curr
                 
             # simulate the system for one step
