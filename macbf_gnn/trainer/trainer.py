@@ -69,10 +69,10 @@ class Trainer:
             # evaluate the algorithm
             if step % eval_interval == 0:
                 reward, eval_info = self.eval(step, eval_epi)
-                tqdm.write(f'step: {step}, reward: {reward:.2f}, time: {time() - start_time:.0f}')
+                tqdm.write(f'step: {step}, reward: {reward:.2f}, time: {time() - start_time:.0f}s')
                 self.algo.save(os.path.join(self.model_dir, f'step_{step}'))
 
-        print(f'> Done in {time() - start_time} seconds')
+        print(f'> Done in {time() - start_time:.0f} seconds')
 
     def eval(self, step: int, eval_epi: int) -> Tuple[float, dict]:
         """
