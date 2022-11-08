@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import os
 import datetime
+import yaml
 
 from torch.utils.tensorboard import SummaryWriter
 from typing import Tuple
@@ -21,7 +22,7 @@ def init_logger(
         seed: int,
         args: dict = None,
         hyper_params: dict = None,
-) -> Tuple[str, SummaryWriter, str]:
+) -> str:
     """
     Initialize the logger. The logger dir should include the following path:
         - <log folder>
@@ -29,8 +30,7 @@ def init_logger(
                 - <algo name>
                     - seed<seed>_<experiment time>
                         - settings.yaml: the experiment setting
-                        - summary: training summary
-                        - models: saved models
+
     Parameters
     ----------
     log_path: str,
@@ -50,10 +50,6 @@ def init_logger(
     -------
     log_path: str,
         path of the log
-    writer: SummaryWriter,
-        summary dir
-    model_path: str,
-        models dir
     """
     # make log path
     if not os.path.exists(log_path):
@@ -75,12 +71,6 @@ def init_logger(
 
     # set up log, summary writer
     log_path = os.path.join(log_path, env_name, algo_name, f'seed{seed}_{start_time}')
-    writer = SummaryWriter(log_dir=os.path.join(log_path, 'summary'))
-
-    # make path for saving models
-    model_path = os.path.join(log_path, 'models')
-    if not os.path.exists(model_path):
-        os.mkdir(model_path)
 
     # write args
     log = open(os.path.join(log_path, 'settings.yaml'), 'w')
@@ -102,4 +92,10 @@ def init_logger(
         log.write('hyper_params: using default hyper-parameters')
     log.close()
 
-    return log_path, writer, model_path
+    return log_path
+
+
+def read_settings(path: str):
+    with open(os.path.join(path, 'settings.yaml')) as f:
+        settings = yaml.load(f, Loader=yaml.FullLoader)
+    return settings

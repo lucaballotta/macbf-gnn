@@ -19,7 +19,7 @@ def lqr(
     Yields the control law u = -K x
     """
 
-    # first, try to solve the ricatti equation
+    # first, try to solve the Riccati equation
     X = solve_discrete_are(A, B, Q, R)
 
     # compute the LQR gain

@@ -27,7 +27,7 @@ class Trainer:
         # make dir for the models
         if not os.path.exists(log_dir):
             os.mkdir(log_dir)
-        self.model_dir = os.path.join(log_dir, 'model')
+        self.model_dir = os.path.join(log_dir, 'models')
         if not os.path.exists(self.model_dir):
             os.mkdir(self.model_dir)
 

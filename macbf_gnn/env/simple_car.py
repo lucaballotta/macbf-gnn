@@ -3,7 +3,7 @@ import torch
 import networkx as nx
 import matplotlib.pyplot as plt
 
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 from torch import Tensor
 from torch_geometric.data import Data
 from torch_geometric.transforms.radius_graph import RadiusGraph
@@ -128,7 +128,7 @@ class SimpleCar(MultiAgentEnv):
         done = time_up or reach
 
         # reward function
-        reward = - self.unsafe_mask(data).sum() / self.num_agents - 1.0 + reach * 100.
+        reward = - (self.unsafe_mask(data).sum() * 10 / self.num_agents) - 1.0 + reach * 100.
 
         return self.data, float(reward), done, {}
 
@@ -150,10 +150,12 @@ class SimpleCar(MultiAgentEnv):
 
         return data_next
 
-    def render(self, traj: Optional[Tuple[Data, ...]] = None) -> Tuple[np.array, ...]:
+    def render(self, traj: Optional[Tuple[Data, ...]] = None) -> Union[Tuple[np.array, ...]]:
+        return_tuple = True
         if traj is None:
             data = self.data
             traj = (data,)
+            return_tuple = False
 
         gif = []
         for data in traj:
@@ -193,7 +195,10 @@ class SimpleCar(MultiAgentEnv):
             gif.append(fig_np)
             plt.close()
 
-        return tuple(gif)
+        if return_tuple:
+            return tuple(gif)
+        else:
+            return gif[0]
 
     def add_communication_links(self, data: Data) -> Data:
         data = self._builder(data)

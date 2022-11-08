@@ -24,7 +24,7 @@ def train(args):
     env_test = make_env(args.env, args.num_agents, device)
 
     # set up logger
-    log_path, writer, model_path = init_logger(
+    log_path = init_logger(
         args.log_path, args.env, args.algo, args.seed, vars(args), hyper_params=None
     )
 

@@ -16,7 +16,7 @@ env = SimpleCar(5, device)
 data = env.reset()
 
 out = cv2.VideoWriter(
-    './test.mov',
+    './test.mp4',
     cv2.VideoWriter_fourcc(*'mp4v'),
     25,
     (1000, 1000)
@@ -24,7 +24,7 @@ out = cv2.VideoWriter(
 
 traj = []
 for i in range(100):
-    data, reward, done, _ = env.step(torch.zeros(2))
+    data, reward, done, _ = env.step(torch.zeros(5, 4))
     unsafe_mask = env.unsafe_mask(data)
     traj.append(data)
     # out.write(env.render()[0])
