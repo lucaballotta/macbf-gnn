@@ -86,8 +86,8 @@ def main():
         goals_curr = torch.from_numpy(goals_curr).to(device)
         states_trajectory = []
         goals_trajectory = []
-        actions_diff_trajectory = []
         data_trajectory = []
+        loss_action_traj = 0
 
         # run system for INNER_LOOPS steps to generate consistent trajectory
         for _ in range(BATCH_SIZE_MAX):
@@ -108,8 +108,8 @@ def main():
                     noise = torch.randn(actions_diff_curr.shape) * NOISE_SCALE
                     actions_diff_curr = actions_diff_curr + noise
                     
-                actions_diff_trajectory.append(actions_diff_curr)
                 actions_curr = actions_ref_curr + actions_diff_curr
+                loss_action_traj += torch.mean(torch.norm(actions_diff_curr, dim=1))
                 
             else:
                 
@@ -129,14 +129,12 @@ def main():
         batch_size = len(states_trajectory)
         states_trajectory = torch.cat(states_trajectory, dim=0)
         goals_trajectory = torch.cat(goals_trajectory, dim=0)
-        actions_diff_trajectory = torch.cat(actions_diff_trajectory, dim=0)
         
         # compute loss for batch of trajectory states
         data_trajectory = Batch.from_data_list(data_trajectory)
         h_trajectory = cbf_certificate(data_trajectory)
         loss_dang_traj, loss_safe_traj, loss_safe_deriv_traj, _, _, _ = loss_cbf(h_trajectory, states_trajectory, batch_size, NUM_AGENTS, device)
         # loss_safe_deriv, _ = loss_cbf_deriv(h_trajectory, states_trajectory)
-        loss_action_traj = loss_actions(actions_diff_trajectory)
         loss_list_traj = [2 * loss_dang_traj, loss_safe_traj, loss_safe_deriv_traj, 0.01 * loss_action_traj]
         # loss_list_iter = [2 * loss_dang, loss_safe, 2 * loss_dang_deriv, loss_safe_deriv, 0.01 * loss_action_iter]
         # acc_list_iter = [acc_dang, acc_safe, acc_dang_deriv, acc_safe_deriv]
