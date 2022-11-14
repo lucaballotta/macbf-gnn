@@ -123,7 +123,7 @@ class SimpleCar(MultiAgentEnv):
         self._data = self.add_communication_links(data)
 
         # the episode ends when reaching max_episode_steps or all the agents reach the goal
-        time_up = self._t > self.max_episode_steps
+        time_up = self._t >= self.max_episode_steps
         reach = torch.less(torch.norm(self.data.states[:, :2] - self._goal, dim=1), self._params['dist2goal']).all()
         done = time_up or reach
 

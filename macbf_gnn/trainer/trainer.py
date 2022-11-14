@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import wandb
 
 from typing import Tuple
 from time import time
@@ -32,6 +33,7 @@ class Trainer:
             os.mkdir(self.model_dir)
 
         # set up log writer
+        wandb.init(project='macbf-gnn')
         self.summary_dir = os.path.join(log_dir, 'summary')
         self.writer = SummaryWriter(log_dir=self.summary_dir)
 

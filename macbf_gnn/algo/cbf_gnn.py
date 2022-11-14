@@ -47,7 +47,6 @@ class CBFGNN(nn.Module):
         x = self.feat_transformer(data.x, data.edge_attr, data.edge_index)
         h = self.feat_2_CBF(x)
         return h
-        # return h.reshape(-1, self.num_agents)
 
 
 class MACBFGNN(Algorithm):
@@ -193,3 +192,4 @@ class MACBFGNN(Algorithm):
     def load(self, load_dir: str):
         assert os.path.exists(load_dir)
         self.cbf.load_state_dict(torch.load(os.path.join(load_dir, 'cbf.pkl'), map_location=self.device))
+        self.actor.load_state_dict(torch.load(os.path.join(load_dir, 'actor.pkl'), map_location=self.device))

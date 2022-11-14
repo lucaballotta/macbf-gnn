@@ -1,11 +1,9 @@
 import torch
-import yaml
 import os
 import cv2
 import numpy as np
 import argparse
 import time
-import matplotlib.pyplot as plt
 
 
 from macbf_gnn.trainer.utils import set_seed, read_settings
@@ -36,7 +34,9 @@ def test(args):
     # build algorithm
     if args.path is None:
         # evaluate the nominal controller
-        controller = env.u_ref
+        def nominal(x):
+            return torch.zeros(x.num_nodes, env.action_dim, device=device)
+        controller = nominal
         args.path = f'./logs/{args.env}'
         if not os.path.exists('./logs'):
             os.mkdir('./logs')
@@ -73,25 +73,13 @@ def test(args):
     if not args.no_video and not os.path.exists(video_path):
         os.mkdir(video_path)
 
-    # set up video writer
-    out = None
-    if not args.no_video:
-        env.reset()
-        fig = env.render()
-        out = cv2.VideoWriter(
-            os.path.join(video_path, f'reward{0.0}.mp4'),
-            cv2.VideoWriter_fourcc(*'mp4v'),
-            25,
-            (fig.shape[1], fig.shape[0])
-        )
-
     # evaluate policy
     rewards = []
     lengths = []
     gif = []
     print('> Processing...')
     start_time = time.time()
-    for i_epi in range(args.epi):
+    for i_epi in range(args.epi):  # todo: parallel computing
         epi_length = 0
         epi_reward = 0
         data = env.reset()
@@ -114,14 +102,20 @@ def test(args):
                 lengths.append(epi_length)
                 break
 
-    # release the video
+    # make video
+    print(f'> Making video...')
     if not args.no_video:
-        print(f'> Making video...')
+        out = cv2.VideoWriter(
+            os.path.join(video_path, f'reward{np.mean(rewards):.2f}.mp4'),
+            cv2.VideoWriter_fourcc(*'mp4v'),
+            25,
+            (gif[-1].shape[1], gif[-1].shape[0])
+        )
+
+        # release the video
         for fig in gif:
             out.write(fig)
         out.release()
-        os.rename(os.path.join(video_path, f'reward{0.0}.mp4'),
-                  os.path.join(video_path, f'reward{np.mean(rewards):.2f}.mp4'))
 
     # print evaluation results
     print(f'average reward: {np.mean(rewards):.2f}, average length: {np.mean(lengths):.2f}')
