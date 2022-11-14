@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from abc import ABC, abstractmethod, abstractproperty
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 from torch import Tensor
 from torch_geometric.data import Data
 
@@ -204,7 +204,7 @@ class MultiAgentEnv(ABC):
         pass
 
     @abstractmethod
-    def render(self, traj: Optional[Tuple[Data, ...]] = None) -> Tuple[np.array, ...]:
+    def render(self, traj: Optional[Tuple[Data, ...]] = None) -> Union[Tuple[np.array, ...], np.array]:
         """
         Plot the environment for the current time step.
         If traj is not None, plot the environment for the trajectory.

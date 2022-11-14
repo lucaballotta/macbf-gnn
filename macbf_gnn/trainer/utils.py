@@ -4,8 +4,9 @@ import os
 import datetime
 import yaml
 
-from torch.utils.tensorboard import SummaryWriter
-from typing import Tuple
+from typing import Tuple, Callable, Optional, List, Union, Any
+
+from macbf_gnn.env import MultiAgentEnv
 
 
 def set_seed(seed: int):
@@ -99,3 +100,56 @@ def read_settings(path: str):
     with open(os.path.join(path, 'settings.yaml')) as f:
         settings = yaml.load(f, Loader=yaml.FullLoader)
     return settings
+
+
+def eval_ctrl_epi(
+        controller: Callable, env: MultiAgentEnv, seed: int = 0, make_video: bool = True, verbose: bool = True,
+) -> tuple[float, float, Tuple[Union[tuple[np.array, ...], np.array]]]:
+    """
+    Evaluate the controller for one episode.
+
+    Parameters
+    ----------
+    controller: Callable,
+        controller that gives action given a graph
+    env: MultiAgentEnv,
+        test environment
+    seed: int,
+        random seed
+    make_video: bool,
+        if true, return the video (a tuple of numpy arrays)
+    verbose: bool,
+        if true, print the evaluation information
+
+    Returns
+    -------
+    epi_reward: float,
+        episode reward
+    epi_length: float,
+        episode length
+    video: Optional[Tuple[np.array]],
+        a tuple of numpy arrays
+    """
+    set_seed(seed)
+    epi_length = 0.
+    epi_reward = 0.
+    video = []
+    data = env.reset()
+    t = 0
+    while True:
+        action = controller(data)
+        next_data, reward, done, _ = env.step(action)
+        epi_length += 1
+        epi_reward += reward
+        t += 1
+
+        if make_video:
+            video.append(env.render())
+
+        data = next_data
+
+        if done:
+            if verbose:
+                print(f'reward: {epi_reward:.2f}, length: {epi_length}')
+            break
+    return epi_reward, epi_length, tuple(video)

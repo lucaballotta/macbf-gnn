@@ -4,9 +4,9 @@ import cv2
 import numpy as np
 import argparse
 import time
+import multiprocessing
 
-
-from macbf_gnn.trainer.utils import set_seed, read_settings
+from macbf_gnn.trainer.utils import set_seed, read_settings, eval_ctrl_epi
 from macbf_gnn.env import make_env
 from macbf_gnn.algo import make_algo
 
@@ -74,33 +74,13 @@ def test(args):
         os.mkdir(video_path)
 
     # evaluate policy
-    rewards = []
-    lengths = []
-    gif = []
+    pool = multiprocessing.Pool()
+    arguments = [(controller, env, np.random.randint(100000), not args.no_video) for _ in range(args.epi)]
     print('> Processing...')
     start_time = time.time()
-    for i_epi in range(args.epi):  # todo: parallel computing
-        epi_length = 0
-        epi_reward = 0
-        data = env.reset()
-        t = 0
-        while True:
-            action = controller(data)
-            next_data, reward, done, _ = env.step(action)
-            epi_length += 1
-            epi_reward += reward
-            t += 1
-
-            if not args.no_video:
-                gif.append(env.render())
-
-            data = next_data
-
-            if done:
-                print(f'epi: {i_epi}, reward: {epi_reward:.2f}, length: {epi_length}')
-                rewards.append(epi_reward)
-                lengths.append(epi_length)
-                break
+    results = pool.starmap(eval_ctrl_epi, arguments)
+    rewards, lengths, video = zip(*results)
+    video = sum(video, ())
 
     # make video
     print(f'> Making video...')
@@ -109,11 +89,11 @@ def test(args):
             os.path.join(video_path, f'reward{np.mean(rewards):.2f}.mp4'),
             cv2.VideoWriter_fourcc(*'mp4v'),
             25,
-            (gif[-1].shape[1], gif[-1].shape[0])
+            (video[-1].shape[1], video[-1].shape[0])
         )
 
         # release the video
-        for fig in gif:
+        for fig in video:
             out.write(fig)
         out.release()
 
@@ -130,7 +110,7 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--num-agents', type=int, default=None)
     parser.add_argument('--env', type=str, default=None)
     parser.add_argument('--iter', type=int, default=None)
-    parser.add_argument('--epi', type=int, default=3)
+    parser.add_argument('--epi', type=int, default=5)
     parser.add_argument('--no-video', action='store_true', default=False)
 
     # default

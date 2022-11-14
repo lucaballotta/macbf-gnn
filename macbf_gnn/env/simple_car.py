@@ -150,7 +150,7 @@ class SimpleCar(MultiAgentEnv):
 
         return data_next
 
-    def render(self, traj: Optional[Tuple[Data, ...]] = None) -> Union[Tuple[np.array, ...]]:
+    def render(self, traj: Optional[Tuple[Data, ...]] = None) -> Union[Tuple[np.array, ...], np.array]:
         return_tuple = True
         if traj is None:
             data = self.data
