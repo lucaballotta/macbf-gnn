@@ -248,13 +248,12 @@ class SimpleCar(MultiAgentEnv):
 
         # feedback control
         action = - torch.einsum('us,bns->bnu', self._K, diff)
-        # action = - (self._K @ diff.T).T
         return action.reshape(-1, self.action_dim)
 
     def safe_mask(self, data: Data) -> Tensor:
         return torch.logical_not(self.unsafe_mask(data))
 
-    def unsafe_mask(self, data: Data) -> Tensor:
+    def unsafe_mask(self, data: Data) -> Tensor:  # todo: bug exists for batched data
         state_diff = data.states.unsqueeze(1) - data.states.unsqueeze(0)
         pos_diff = state_diff[:, :, :2]
         dist = pos_diff.norm(dim=2)

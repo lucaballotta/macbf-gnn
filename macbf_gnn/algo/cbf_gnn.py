@@ -95,11 +95,14 @@ class MACBFGNN(Algorithm):
         self.batch_size = batch_size
 
         # hyperparams
-        self.params = {
+        self.params = {  # todo: tune this
             'alpha': 1.0,
             'eps': 0.01,
             'inner_iter': 10,
-            'loss_action_coef': 0.1
+            'loss_action_coef': 0.1,
+            'loss_unsafe_coef': 1.,
+            'loss_safe_coef': 1.,
+            'loss_h_dot_coef': 1.
         }
 
     def act(self, data: Data) -> Tensor:
@@ -119,7 +122,7 @@ class MACBFGNN(Algorithm):
             # sample from the current buffer and the memory
             if self.memory.size == 0:
                 graphs = Batch.from_data_list(self.buffer.sample(self.batch_size // 5))
-            else:
+            else:  # todo: change sample to balanced sample
                 curr_graphs = self.buffer.sample(self.batch_size // 10)
                 prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10)
                 graphs = Batch.from_data_list(curr_graphs + prev_graphs)
@@ -161,7 +164,10 @@ class MACBFGNN(Algorithm):
             loss_action = torch.mean(torch.square(actions).sum(dim=1))
 
             # backpropagation
-            loss = loss_unsafe + loss_safe + loss_h_dot + self.params['loss_action_coef'] * loss_action
+            loss = self.params['loss_unsafe_coef'] * loss_unsafe + \
+                   self.params['loss_safe_coef'] * loss_safe + \
+                   self.params['loss_h_dot_coef'] * loss_h_dot + \
+                   self.params['loss_action_coef'] * loss_action
             self.optim_cbf.zero_grad()
             self.optim_actor.zero_grad()
             loss.backward()
