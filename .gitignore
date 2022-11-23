@@ -2,3 +2,4 @@ __pycache__/
 .idea
 logs
 token-github.txt
+.DS_Store

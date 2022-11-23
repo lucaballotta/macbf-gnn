@@ -14,7 +14,7 @@ class MLP(nn.Module):
             layers.append(nn.Linear(units, next_units))
             layers.append(hidden_activation)
             units = next_units
-            
+
         layers.append(nn.Linear(units, out_channels))
         if output_activation is not None:
             layers.append(output_activation)
@@ -23,7 +23,7 @@ class MLP(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
-    
+
 
 class LazyMLP(nn.Module):
 
@@ -38,7 +38,7 @@ class LazyMLP(nn.Module):
             layers.append(nn.Linear(units, next_units))
             layers.append(hidden_activation)
             units = next_units
-            
+
         layers.append(nn.Linear(units, out_channels))
         if output_activation is not None:
             layers.append(output_activation)

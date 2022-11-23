@@ -24,3 +24,7 @@ class AttentionAggregation(Aggregation):
         x = self.nn(x) if self.nn is not None else x
         gate = softmax(gate, index, ptr, dim_size, dim)
         return self.reduce(gate * x, index, ptr, dim_size, dim)
+
+    def __repr__(self) -> str:
+        return (f'{self.__class__.__name__}(gate_nn={self.gate_nn}, '
+                f'nn={self.nn})')
