@@ -122,7 +122,7 @@ class MACBFGNN(Algorithm):
             # sample from the current buffer and the memory
             if self.memory.size == 0:
                 graphs = Batch.from_data_list(self.buffer.sample(self.batch_size // 5))
-            else:  # todo: change sample to balanced sample
+            else:  #TODO: change sample to balanced sample
                 curr_graphs = self.buffer.sample(self.batch_size // 10)
                 prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10)
                 graphs = Batch.from_data_list(curr_graphs + prev_graphs)

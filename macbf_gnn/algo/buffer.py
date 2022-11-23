@@ -5,7 +5,7 @@ from torch_geometric.data import Data
 
 
 class Buffer:
-    # todo: sample segments of trajectory to retain temporal information
+    #TODO: sample segments of trajectory to retain temporal information
 
     def __init__(self):
         self._data = []  # todo: add maximum number of states
