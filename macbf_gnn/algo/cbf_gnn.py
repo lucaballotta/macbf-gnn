@@ -1,6 +1,7 @@
 import torch.nn as nn
 import os
 import torch
+import random
 
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.data import Data, Batch
@@ -92,10 +93,12 @@ class MACBFGNN(Algorithm):
         # buffer to store data used in training
         self.buffer = Buffer()  # buffer for current episode
         self.memory = Buffer()  # replay buffer
+        self.buffer_unsafe_steps = [] # buffer with unsafe states in current episode
+        self.memory_unsafe_steps = [] # replay buffer with unsafe states
         self.batch_size = batch_size
 
         # hyperparams
-        self.params = {  # todo: tune this
+        self.params = {  #TODO: tune this
             'alpha': 1.0,
             'eps': 0.01,
             'inner_iter': 10,
@@ -109,23 +112,42 @@ class MACBFGNN(Algorithm):
         with torch.no_grad():
             return self.actor(data)
 
-    def step(self, data: Data) -> Tensor:
+    def step(self, data: Data, step: int) -> Tensor:
         action = self.actor(data)
         self.buffer.append(data)
+        unsafe_mask_data = self._env.unsafe_mask(data)
+        if torch.any(unsafe_mask_data):
+            self.buffer_unsafe_steps.append(step)
+            
         return action
 
     def is_update(self, step: int) -> bool:
         return step % self.batch_size == 0
 
     def update(self, step: int, writer: SummaryWriter = None):
+        seg_len = 2
         for i_inner in range(self.params['inner_iter']):
             # sample from the current buffer and the memory
             if self.memory.size == 0:
-                graphs = Batch.from_data_list(self.buffer.sample(self.batch_size // 5))
-            else:  #TODO: change sample to balanced sample
-                curr_graphs = self.buffer.sample(self.batch_size // 10)
-                prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10)
+                graphs = Batch.from_data_list(self.buffer.sample(self.batch_size // 5, seg_len))
+                
+            elif len(self.memory_unsafe_steps) == 0: # standard sampling  
+                curr_graphs = self.buffer.sample(self.batch_size // 10, seg_len)
+                prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10, seg_len)
                 graphs = Batch.from_data_list(curr_graphs + prev_graphs)
+                
+            else: #TODO: fix sample to balanced sample
+                curr_graphs = self.buffer.sample(self.batch_size // 10, seg_len)
+                num_unsafe = min(len(self.memory_unsafe_steps), 10)
+                steps_unsafe_select = random.sample(self.memory_unsafe_steps, num_unsafe)
+                graphs_unsafe = []
+                for i in steps_unsafe_select:
+                    lb = max(i - seg_len // 2, 0)
+                    ub = min(i + seg_len // 2 + 1, self.memory.size)
+                    graphs_unsafe.extend(self.memory.data[lb:ub])
+                    
+                prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10, seg_len)
+                graphs = Batch.from_data_list(curr_graphs + prev_graphs + graphs_unsafe)
 
             # get CBF values and the control inputs
             h = self.cbf(graphs)
@@ -188,7 +210,9 @@ class MACBFGNN(Algorithm):
         # merge the current buffer to the memory
         self.memory.merge(self.buffer)
         self.buffer.clear()
-
+        self.memory_unsafe_steps.extend(self.buffer_unsafe_steps)
+        self.buffer_unsafe_steps = []
+        
     def save(self, save_dir: str):
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)

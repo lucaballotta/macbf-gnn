@@ -5,10 +5,8 @@ from torch_geometric.data import Data
 
 
 class Buffer:
-    #TODO: sample segments of trajectory to retain temporal information
-
     def __init__(self):
-        self._data = []  # todo: add maximum number of states
+        self._data = []  #TODO: add maximum number of states
 
     def append(self, data: Data):
         self._data.append(data)
@@ -27,12 +25,26 @@ class Buffer:
     def clear(self):
         self._data.clear()
 
-    def sample(self, n: int) -> List[Data]:
-        assert self.size > 0
+    def sample(self, n: int, m: int=1) -> List[Data]:
+        """
+        Sample at random segments of trajectory from buffer.
+        Each segment is selected as a symmetric ball w.r.t. randomly sampled data points
+        (apart from data points at beginning or end)
+
+        Parameters
+        ----------
+        n: int,
+            number of sample segments
+        m: int,
+            maximal length of each sampled trajectory segment
+        """
+        assert self.size >= max(n, m)
         index = np.random.randint(0, self.size, n)
         data_list = []
         for i in index:
-            data_list.append(self._data[i])
+            lb = max(i - m // 2, 0)
+            ub = min(i + m // 2 + 1, self.size)
+            data_list.extend(self._data[lb:ub])
         return data_list
 
 
