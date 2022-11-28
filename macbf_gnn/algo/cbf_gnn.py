@@ -2,6 +2,7 @@ import torch.nn as nn
 import os
 import torch
 import random
+import numpy as np
 
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.data import Data, Batch
@@ -115,8 +116,7 @@ class MACBFGNN(Algorithm):
     def step(self, data: Data, step: int) -> Tensor:
         action = self.actor(data)
         self.buffer.append(data)
-        unsafe_mask_data = self._env.unsafe_mask(data)
-        if torch.any(unsafe_mask_data):
+        if torch.any(self._env.unsafe_mask(data)):
             self.buffer_unsafe_steps.append(step)
             
         return action
@@ -125,24 +125,25 @@ class MACBFGNN(Algorithm):
         return step % self.batch_size == 0
 
     def update(self, step: int, writer: SummaryWriter = None):
-        seg_len = 2
+        seg_len = 3
         for i_inner in range(self.params['inner_iter']):
             # sample from the current buffer and the memory
             if self.memory.size == 0:
                 graphs = Batch.from_data_list(self.buffer.sample(self.batch_size // 5, seg_len))
                 
-            elif len(self.memory_unsafe_steps) == 0: # standard sampling  
+            elif len(self.memory_unsafe_steps) == 0: # standard sampling with no safe/unsafe balance
                 curr_graphs = self.buffer.sample(self.batch_size // 10, seg_len)
                 prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10, seg_len)
                 graphs = Batch.from_data_list(curr_graphs + prev_graphs)
                 
-            else: #TODO: fix sample to balanced sample
+            else: # balanced safe/unsafe samples
                 curr_graphs = self.buffer.sample(self.batch_size // 10, seg_len)
                 num_unsafe = min(len(self.memory_unsafe_steps), 10)
-                steps_unsafe_select = random.sample(self.memory_unsafe_steps, num_unsafe)
+                steps_unsafe_select = np.sort(random.sample(self.memory_unsafe_steps, num_unsafe))
                 graphs_unsafe = []
+                ub = 0
                 for i in steps_unsafe_select:
-                    lb = max(i - seg_len // 2, 0)
+                    lb = max(i - seg_len // 2, ub)  # max with ub avoids replicas of the same graph
                     ub = min(i + seg_len // 2 + 1, self.memory.size)
                     graphs_unsafe.extend(self.memory.data[lb:ub])
                     

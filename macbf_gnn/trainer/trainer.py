@@ -57,7 +57,7 @@ class Trainer:
         data = self.env.reset()
 
         for step in tqdm(range(1, steps + 1)):
-            action = self.algo.step(data, step)
+            action = self.algo.step(data, step - 1)
             next_data, reward, done, info = self.env.step(action)
             if done:
                 data = self.env.reset()
