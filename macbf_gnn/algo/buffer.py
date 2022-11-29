@@ -6,10 +6,13 @@ from torch_geometric.data import Data
 
 class Buffer:
     def __init__(self):
-        self._data = []  #TODO: add maximum number of states
+        self._data = []
+        self.MAX_SIZE = 2e5
 
     def append(self, data: Data):
         self._data.append(data)
+        if len(self._data) > self.MAX_SIZE:
+            del self._data[0]
 
     @property
     def data(self) -> List[Data]:
@@ -21,6 +24,8 @@ class Buffer:
 
     def merge(self, other):
         self._data += other.data
+        if len(self._data) > self.MAX_SIZE:
+            del self._data[0:len(self._data)-self.MAX_SIZE]
 
     def clear(self):
         self._data.clear()
