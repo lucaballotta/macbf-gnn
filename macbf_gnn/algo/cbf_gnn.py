@@ -138,6 +138,7 @@ class MACBFGNN(Algorithm):
                 
             else: # balanced safe/unsafe samples
                 curr_graphs = self.buffer.sample(self.batch_size // 10, seg_len)
+                prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10, seg_len)
                 num_unsafe = min(len(self.memory_unsafe_steps), 10)
                 steps_unsafe_select = np.sort(random.sample(self.memory_unsafe_steps, num_unsafe))
                 graphs_unsafe = []
@@ -147,7 +148,6 @@ class MACBFGNN(Algorithm):
                     ub = min(i + seg_len // 2 + 1, self.memory.size)
                     graphs_unsafe.extend(self.memory.data[lb:ub])
                     
-                prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10, seg_len)
                 graphs = Batch.from_data_list(curr_graphs + prev_graphs + graphs_unsafe)
 
             # get CBF values and the control inputs
@@ -163,9 +163,11 @@ class MACBFGNN(Algorithm):
                 max_val_unsafe = torch.maximum(h_unsafe + eps, torch.zeros_like(h_unsafe))
                 loss_unsafe = torch.mean(max_val_unsafe**2)  # use square loss for robustness
                 acc_unsafe = torch.mean(torch.less(h_unsafe, 0).type_as(h_unsafe))
+                
             else:
                 loss_unsafe = torch.tensor(0.0).type_as(h_unsafe)
                 acc_unsafe = torch.tensor(1.0).type_as(h_unsafe)
+                
             # safe region h(x) > 0
             safe_mask = self._env.safe_mask(graphs)
             h_safe = h[safe_mask]
@@ -173,9 +175,11 @@ class MACBFGNN(Algorithm):
                 max_val_safe = torch.maximum(-h_safe + eps, torch.zeros_like(h_safe))
                 loss_safe = torch.mean(max_val_safe**2)  # use square loss for robustness
                 acc_safe = torch.mean(torch.greater_equal(h_safe, 0).type_as(h_safe))
+                
             else:
                 loss_safe = torch.tensor(0.0).type_as(h_unsafe)
                 acc_safe = torch.tensor(1.0).type_as(h_unsafe)
+                
             # derivative loss h_dot + \alpha h > 0
             graphs_next = self._env.forward_graph(graphs, actions)  # todo: change edge attr
             h_next = self.cbf(graphs_next)

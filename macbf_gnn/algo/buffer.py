@@ -46,10 +46,12 @@ class Buffer:
         assert self.size >= max(n, m)
         index = np.random.randint(0, self.size, n)
         data_list = []
+        ub = 0
         for i in index:
-            lb = max(i - m // 2, 0)
+            lb = max(i - m // 2, ub)  # max with ub avoids replicas of the same graph
             ub = min(i + m // 2 + 1, self.size)
             data_list.extend(self._data[lb:ub])
+            
         return data_list
 
 
