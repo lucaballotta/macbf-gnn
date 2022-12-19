@@ -1,4 +1,5 @@
 import numpy as np
+import random
 
 from typing import Tuple, Any, Union, Optional, List
 from torch_geometric.data import Data
@@ -6,14 +7,27 @@ from torch_geometric.data import Data
 
 class Buffer:
     def __init__(self):
-        self._data = []
-        self.MAX_SIZE = 2e5
+        self._data = [] # list with all graphs
+        self.safe_data = [] # list of positions with safe graphs
+        self.unsafe_data = [] # list of positions with unsafe graphs
+        self.MAX_SIZE = 50
 
-    def append(self, data: Data):
+
+    def append(self, data: Data, is_safe: bool):
         self._data.append(data)
-        if len(self._data) > self.MAX_SIZE:
-            del self._data[0]
-
+        self.safe_data.append(self.size - 1) if is_safe else self.unsafe_data.append(self.size - 1)
+        if self.size > self.MAX_SIZE:
+            del self._data[0]   # remove oldest data
+            try:
+                self.safe_data.remove(0)
+                
+            except:
+                self.unsafe_data.remove(0)
+                
+            self.safe_data = [i - 1 for i in self.safe_data]
+            self.unsafe_data = [i - 1 for i in self.unsafe_data]
+                        
+            
     @property
     def data(self) -> List[Data]:
         return self._data
@@ -23,14 +37,30 @@ class Buffer:
         return len(self._data)
 
     def merge(self, other):
+        size_init = self.size
         self._data += other.data
-        if len(self._data) > self.MAX_SIZE:
-            del self._data[0:len(self._data)-self.MAX_SIZE]
+        other_safe_data = [i + size_init for i in other.safe_data]
+        self.safe_data.extend(other_safe_data)
+        other_unsafe_data = [i + size_init for i in other.unsafe_data]
+        self.unsafe_data.extend(other_unsafe_data)
+        if self.size > self.MAX_SIZE:
+            for i in range(self.size-self.MAX_SIZE):
+                try:
+                    self.safe_data.remove(i)
+                    
+                except:
+                    self.unsafe_data.remove(i)
+                    
+            self.safe_data = [i - (self.size-self.MAX_SIZE) for i in self.safe_data]
+            self.unsafe_data = [i - (self.size-self.MAX_SIZE) for i in self.unsafe_data]
+            del self._data[:self.size-self.MAX_SIZE] # remove oldest data
 
     def clear(self):
         self._data.clear()
+        self.safe_data = []
+        self.unsafe_data = []
 
-    def sample(self, n: int, m: int=1) -> List[Data]:
+    def sample(self, n: int, m: int=1, balanced_sampling: bool=False) -> List[Data]:
         """
         Sample at random segments of trajectory from buffer.
         Each segment is selected as a symmetric ball w.r.t. randomly sampled data points
@@ -44,11 +74,20 @@ class Buffer:
             maximal length of each sampled trajectory segment
         """
         assert self.size >= max(n, m)
-        index = np.random.randint(0, self.size, n)
         data_list = []
+        if not balanced_sampling:
+            index = np.sort(np.random.randint(0, self.size, n))
+            
+        else:
+            unsafe_num = min(n // 2, len(self.unsafe_data))
+            safe_num = n - unsafe_num
+            index_unsafe = random.sample(self.unsafe_data, unsafe_num)
+            index_safe = random.sample(self.safe_data, safe_num)
+            index = sorted(index_safe + index_unsafe)
+            
         ub = 0
         for i in index:
-            lb = max(i - m // 2, ub)  # max with ub avoids replicas of the same graph
+            lb = max(i - m // 2, ub)  # max with ub avoids replicas of the same graph in data_list
             ub = min(i + m // 2 + 1, self.size)
             data_list.extend(self._data[lb:ub])
             
