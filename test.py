@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import argparse
 import time
-import multiprocessing
+import multiprocess
 
 from macbf_gnn.trainer.utils import set_seed, read_settings, eval_ctrl_epi
 from macbf_gnn.env import make_env
@@ -22,7 +22,7 @@ def test(args):
     try:
         settings = read_settings(args.path)
     except TypeError:
-        settings = None
+        settings = {'algo': 'nominal', 'num_agents': args.num_agents}
 
     # make environment
     env = make_env(
@@ -32,11 +32,17 @@ def test(args):
     )
 
     # build algorithm
+    algo = make_algo(
+        algo=settings['algo'],
+        env=env,
+        num_agents=settings['num_agents'],
+        node_dim=env.node_dim,
+        edge_dim=env.edge_dim,
+        action_dim=env.action_dim,
+        device=device
+    )
     if args.path is None:
         # evaluate the nominal controller
-        def nominal(x):
-            return torch.zeros(x.num_nodes, env.action_dim, device=device)
-        controller = nominal
         args.path = f'./logs/{args.env}'
         if not os.path.exists('./logs'):
             os.mkdir('./logs')
@@ -47,15 +53,6 @@ def test(args):
         video_path = os.path.join(args.path, 'nominal', 'videos')
     else:
         # evaluate the learned controller
-        algo = make_algo(
-            algo=settings['algo'],
-            env=env,
-            num_agents=settings['num_agents'],
-            node_dim=env.node_dim,
-            edge_dim=env.edge_dim,
-            action_dim=env.action_dim,
-            device=device
-        )
         model_path = os.path.join(args.path, 'models')
         if args.iter is not None:
             # load the controller at given iteration
@@ -66,7 +63,6 @@ def test(args):
             controller_name = [i for i in controller_name if 'step' in i]
             controller_id = sorted([int(i.split('step_')[1].split('.')[0]) for i in controller_name])
             algo.load(os.path.join(model_path, f'step_{controller_id[-1]}'))
-        controller = algo.act
         video_path = os.path.join(args.path, 'videos')
 
     # mkdir for the video and the figures
@@ -74,8 +70,8 @@ def test(args):
         os.mkdir(video_path)
 
     # evaluate policy
-    pool = multiprocessing.Pool()
-    arguments = [(controller, env, np.random.randint(100000), not args.no_video) for _ in range(args.epi)]
+    pool = multiprocess.Pool()
+    arguments = [(algo.act, env, np.random.randint(100000), not args.no_video) for _ in range(args.epi)]
     print('> Processing...')
     start_time = time.time()
     results = pool.starmap(eval_ctrl_epi, arguments)

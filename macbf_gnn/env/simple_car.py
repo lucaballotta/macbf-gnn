@@ -254,16 +254,15 @@ class SimpleCar(MultiAgentEnv):
         return torch.logical_not(self.unsafe_mask(data))
 
     def unsafe_mask(self, data: Data) -> Tensor:  # todo: bug exists for batched data
-        mask = torch.empty((len(data.states)), dtype=bool)
-        for i in range(len(data.states) // self.num_agents):
-            state_diff = data.states[self.num_agents * i:self.num_agents * (i+1)].unsqueeze(1) - \
-                data.states[self.num_agents * i:self.num_agents * (i+1)].unsqueeze(0)
+        mask = torch.empty(data.states.shape[0])
+        for i in range(data.states.shape[0] // self.num_agents):
+            state_diff = data.states[self.num_agents * i: self.num_agents * (i + 1)].unsqueeze(1) - \
+                data.states[self.num_agents * i: self.num_agents * (i + 1)].unsqueeze(0)
             pos_diff = state_diff[:, :, :2]
             dist = pos_diff.norm(dim=2)
             dist += torch.eye(dist.shape[0], device=self.device) * (2 * self._params['car_radius'] + 1)
             collision = torch.less(dist, 2 * self._params['car_radius'])
-            mask[self.num_agents * i:self.num_agents * (i+1)] = torch.max(collision, dim=1)[0]
-            
-        mask = mask.unsqueeze(1)
+            mask[self.num_agents * i: self.num_agents * (i + 1)] = torch.max(collision, dim=1)[0]
+        mask = mask.bool()
         
         return mask

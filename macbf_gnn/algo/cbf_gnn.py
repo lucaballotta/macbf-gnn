@@ -125,7 +125,7 @@ class MACBFGNN(Algorithm):
         return step % self.batch_size == 0
 
     def update(self, step: int, writer: SummaryWriter = None):
-        seg_len = 3 # pls use odd number
+        seg_len = 3  # pls use odd number
         for i_inner in range(self.params['inner_iter']):
             # sample from the current buffer and the memory
             if self.memory.size == 0:

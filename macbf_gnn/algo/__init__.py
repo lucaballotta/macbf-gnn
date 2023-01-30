@@ -4,6 +4,7 @@ from typing import Optional
 
 from .base import Algorithm
 from .cbf_gnn import MACBFGNN
+from .nominal import Nominal
 from ..env import MultiAgentEnv
 
 
@@ -18,6 +19,10 @@ def make_algo(
         batch_size: int = 500,
         hyperparams: Optional[dict] = None
 ) -> Algorithm:
+    if algo == 'nominal':
+        return Nominal(
+            env, num_agents, node_dim, edge_dim, action_dim, device
+        )
     if algo == 'macbfgnn':
         return MACBFGNN(
             env, num_agents, node_dim, edge_dim, action_dim, device, batch_size
