@@ -25,7 +25,7 @@ def make_algo(
         )
     if algo == 'macbfgnn':
         return MACBFGNN(
-            env, num_agents, node_dim, edge_dim, action_dim, device, batch_size
+            env, num_agents, node_dim, edge_dim, action_dim, device, batch_size, hyperparams
         )
     else:
         raise NotImplementedError('Unknown Algorithm!')

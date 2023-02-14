@@ -3,8 +3,11 @@ import numpy as np
 import os
 import datetime
 import yaml
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from typing import Tuple, Callable, Optional, List, Union, Any
+from torch_geometric.data import Data, Batch
 
 from macbf_gnn.env import MultiAgentEnv
 
@@ -153,3 +156,46 @@ def eval_ctrl_epi(
                 print(f'reward: {epi_reward:.2f}, length: {epi_length}')
             break
     return epi_reward, epi_length, tuple(video)
+
+
+def plot_cbf_contour(cbf_fun: Callable, data: Data, env: MultiAgentEnv, agent_id: int, x_dim: int, y_dim: int):
+    n_mesh = 30
+    low_lim, high_lim = env.state_lim
+    x, y = np.meshgrid(
+        np.linspace(low_lim[x_dim].cpu(), high_lim[x_dim].cpu(), n_mesh),
+        np.linspace(low_lim[y_dim].cpu(), high_lim[y_dim].cpu(), n_mesh)
+    )
+    plot_data = []
+    # all_cbf = []
+    for i in range(n_mesh):
+        cbf_row = []
+        for j in range(n_mesh):
+            state = data.states
+            state[agent_id, x_dim] = x[i, j]
+            state[agent_id, y_dim] = y[i, j]
+            # new_data = data
+            # new_data.states = state
+            # new_data.pos = state[:, :2]
+            new_data = Data(x=data.x, edge_index=data.edge_index, pos=state[:, :2],
+                            edge_attr=state[data.edge_index[0]]-state[data.edge_index[1]])
+            # new_data = Data(x=torch.zeros_like(state), pos=state[:, :2], states=state)
+            # new_data = env.add_communication_links(new_data)
+            plot_data.append(new_data)
+    #         cbf = cbf_fun(new_data).view(1, 1, env.num_agents)[:, :, agent_id].detach().cpu()
+    #         cbf_row.append(cbf)
+    #     all_cbf.append(torch.cat(cbf_row, dim=1))
+    # cbf = torch.cat(all_cbf, dim=0)
+    plot_data = Batch.from_data_list(plot_data)
+    cbf = cbf_fun(plot_data).view(n_mesh, n_mesh, env.num_agents)[:, :, agent_id].detach().cpu()
+    ax = env.render(return_ax=True)
+    # ax = plt.imshow(fig)
+    plt.contourf(x, y, cbf, cmap=sns.color_palette("rocket", as_cmap=True), levels=15, alpha=0.5)
+    plt.colorbar()
+    plt.contour(x, y, cbf, levels=[0.0], colors='blue')
+    # plt.scatter(env.goal_point[0, x_dim].cpu(), env.goal_point[0, y_dim].cpu(), s=10, alpha=1, c='black')
+    # plt.xlim((lower_limit[x_dim].cpu(), upper_limit[x_dim].cpu()))
+    # plt.ylim((lower_limit[y_dim].cpu(), upper_limit[y_dim].cpu()))
+    plt.xlabel(f'dim: {x_dim}')
+    plt.ylabel(f'dim: {y_dim}')
+
+    return ax

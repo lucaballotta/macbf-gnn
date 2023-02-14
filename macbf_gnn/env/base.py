@@ -19,6 +19,13 @@ class MultiAgentEnv(ABC):
         self._params = params
         self._data = None
         self._t = 0
+        self._mode = 'train'
+
+    def train(self):
+        self._mode = 'train'
+
+    def test(self):
+        self._mode = 'test'
 
     @property
     def num_agents(self) -> int:
@@ -204,7 +211,9 @@ class MultiAgentEnv(ABC):
         pass
 
     @abstractmethod
-    def render(self, traj: Optional[Tuple[Data, ...]] = None) -> Union[Tuple[np.array, ...], np.array]:
+    def render(
+            self, traj: Optional[Tuple[Data, ...]] = None, return_ax: bool = False, plot_edge: bool = False
+    ) -> Union[Tuple[np.array, ...], np.array]:
         """
         Plot the environment for the current time step.
         If traj is not None, plot the environment for the trajectory.
@@ -239,16 +248,16 @@ class MultiAgentEnv(ABC):
         """
         pass
 
-    # @abstractproperty
-    # def state_lim(self) -> Tuple[Tensor, Tensor]:
-    #     """
-    #     Returns
-    #     -------
-    #     lower limit, upper limit: Tuple[Tensor, Tensor],
-    #         limits of the state
-    #     """
-    #     pass
-    #
+    @abstractproperty
+    def state_lim(self) -> Tuple[Tensor, Tensor]:
+        """
+        Returns
+        -------
+        lower limit, upper limit: Tuple[Tensor, Tensor],
+            limits of the state
+        """
+        pass
+
     # @abstractproperty
     # def node_lim(self) -> Tuple[Tensor, Tensor]:
     #     """

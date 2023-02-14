@@ -42,6 +42,7 @@ def test(args):
         device=device
     )
     if args.path is None:
+        assert args.env is not None and args.num_agents is not None
         # evaluate the nominal controller
         args.path = f'./logs/{args.env}'
         if not os.path.exists('./logs'):
@@ -71,7 +72,7 @@ def test(args):
 
     # evaluate policy
     pool = multiprocess.Pool()
-    arguments = [(algo.act, env, np.random.randint(100000), not args.no_video) for _ in range(args.epi)]
+    arguments = [(algo.act_strict, env, np.random.randint(100000), not args.no_video) for _ in range(args.epi)]
     print('> Processing...')
     start_time = time.time()
     results = pool.starmap(eval_ctrl_epi, arguments)

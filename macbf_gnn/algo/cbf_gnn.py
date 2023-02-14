@@ -3,12 +3,16 @@ import os
 import torch
 import random
 import numpy as np
+import cvxpy as cp
 
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.data import Data, Batch
 from torch_geometric.nn import Sequential
 from torch import Tensor
 from torch.optim import Adam
+from torch.autograd.functional import jacobian
+from torch_geometric.nn.conv.transformer_conv import TransformerConv
+from typing import Optional
 
 from macbf_gnn.nn import MLP, CBFGNNLayer
 from macbf_gnn.controller import GNNController
@@ -24,12 +28,25 @@ class CBFGNN(nn.Module):
         super(CBFGNN, self).__init__()
         self.num_agents = num_agents
         self.feat_transformer = Sequential('x, edge_attr, edge_index', [
-            (CBFGNNLayer(node_dim=node_dim, edge_dim=edge_dim, output_dim=64, phi_dim=phi_dim),
+            (CBFGNNLayer(node_dim=node_dim, edge_dim=edge_dim, output_dim=512, phi_dim=phi_dim),
              'x, edge_attr, edge_index -> x'),
             nn.ReLU(),
-            (CBFGNNLayer(node_dim=64, edge_dim=edge_dim, output_dim=64, phi_dim=phi_dim),
+            (CBFGNNLayer(node_dim=512, edge_dim=edge_dim, output_dim=128, phi_dim=phi_dim),
+             'x, edge_attr, edge_index -> x'),
+            nn.ReLU(),
+            (CBFGNNLayer(node_dim=128, edge_dim=edge_dim, output_dim=64, phi_dim=phi_dim),
              'x, edge_attr, edge_index -> x'),
         ])
+        # self.feat_transformer = Sequential('x, edge_index, edge_attr', [
+        #     (TransformerConv(in_channels=node_dim, out_channels=128, edge_dim=edge_dim),
+        #      'x, edge_index, edge_attr -> x'),
+        #     nn.ReLU(),
+        #     (TransformerConv(in_channels=128, out_channels=64, edge_dim=edge_dim),
+        #      'x, edge_index, edge_attr -> x'),
+        #     # nn.ReLU(),
+        #     # (TransformerConv(in_channels=128, out_channels=64, edge_dim=edge_dim),
+        #     #  'x, edge_index, edge_attr -> x'),
+        # ])
         self.feat_2_CBF = MLP(in_channels=64, out_channels=1, hidden_layers=(64, 64))
 
     def forward(self, data: Data) -> Tensor:
@@ -43,7 +60,7 @@ class CBFGNN(nn.Module):
 
         Returns
         -------
-        h: (bs, n)
+        h: (bs x n,)
             CBF values for all agents
         """
         x = self.feat_transformer(data.x, data.edge_attr, data.edge_index)
@@ -61,7 +78,8 @@ class MACBFGNN(Algorithm):
             edge_dim: int,
             action_dim: int,
             device: torch.device,
-            batch_size: int = 500
+            batch_size: int = 500,
+            params: Optional[dict] = None
     ):
         super(MACBFGNN, self).__init__(
             env=env,
@@ -89,7 +107,7 @@ class MACBFGNN(Algorithm):
 
         # optimizer
         self.optim_cbf = Adam(self.cbf.parameters(), lr=3e-4)
-        self.optim_actor = Adam(self.actor.parameters(), lr=3e-4)
+        self.optim_actor = Adam(self.actor.parameters(), lr=1e-3)
 
         # buffer to store data used in training
         self.buffer = Buffer()  # buffer for current episode
@@ -97,19 +115,23 @@ class MACBFGNN(Algorithm):
         self.batch_size = batch_size
 
         # hyperparams
-        self.params = {  #TODO: tune this
-            'alpha': 1.0,
-            'eps': 0.01,
-            'inner_iter': 10,
-            'loss_action_coef': 0.1,
-            'loss_unsafe_coef': 1.,
-            'loss_safe_coef': 1.,
-            'loss_h_dot_coef': 1.
-        }
+        if params is None:
+            self.params = {  #TODO: tune this
+                'alpha': 0.5,
+                'eps': 0.02,
+                'inner_iter': 10,
+                'loss_action_coef': 0.1,
+                'loss_unsafe_coef': 10.,
+                'loss_safe_coef': 10.,
+                'loss_h_dot_coef': 50.
+            }
+        else:
+            self.params = params
 
     def act(self, data: Data) -> Tensor:
         with torch.no_grad():
             return self.actor(data)
+        # return self.act_strict(data)
 
     def step(self, data: Data) -> Tensor:
         action = self.actor(data)
@@ -146,8 +168,8 @@ class MACBFGNN(Algorithm):
             unsafe_mask = self._env.unsafe_mask(graphs)
             h_unsafe = h[unsafe_mask]
             if h_unsafe.numel():
-                max_val_unsafe = torch.maximum(h_unsafe + eps, torch.zeros_like(h_unsafe))
-                loss_unsafe = torch.mean(max_val_unsafe**2)  # use square loss for robustness
+                max_val_unsafe = torch.relu(h_unsafe + eps)
+                loss_unsafe = torch.mean(max_val_unsafe)  # use square loss for robustness
                 acc_unsafe = torch.mean(torch.less(h_unsafe, 0).type_as(h_unsafe))
                 
             else:
@@ -158,8 +180,8 @@ class MACBFGNN(Algorithm):
             safe_mask = self._env.safe_mask(graphs)
             h_safe = h[safe_mask]
             if h_safe.numel():
-                max_val_safe = torch.maximum(-h_safe + eps, torch.zeros_like(h_safe))
-                loss_safe = torch.mean(max_val_safe**2)  # use square loss for robustness
+                max_val_safe = torch.relu(-h_safe + eps)
+                loss_safe = torch.mean(max_val_safe)  # use square loss for robustness
                 acc_safe = torch.mean(torch.greater_equal(h_safe, 0).type_as(h_safe))
                 
             else:
@@ -170,9 +192,10 @@ class MACBFGNN(Algorithm):
             graphs_next = self._env.forward_graph(graphs, actions)  # todo: change edge attr
             h_next = self.cbf(graphs_next)
             h_dot = (h_next - h) / self._env.dt
-            max_val_h_dot = torch.maximum(-h_dot - self.params['alpha'] * h + eps, torch.zeros_like(h_dot))
-            loss_h_dot = torch.mean(max_val_h_dot**2)  # use square loss for robustness
-            acc_h_dot = torch.mean(torch.greater_equal(h_dot, 0).type_as(h_dot))
+            max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + eps)
+            # loss_h_dot = torch.sum(max_val_h_dot) / torch.sum(torch.greater_equal(h_dot, 0).type_as(h_dot))
+            loss_h_dot = torch.mean(max_val_h_dot)  # use square loss for robustness
+            acc_h_dot = torch.mean(torch.greater_equal(h_dot + self.params['alpha'] * h, 0).type_as(h_dot))
             # action loss
             loss_action = torch.mean(torch.square(actions).sum(dim=1))
 
@@ -213,3 +236,53 @@ class MACBFGNN(Algorithm):
         assert os.path.exists(load_dir)
         self.cbf.load_state_dict(torch.load(os.path.join(load_dir, 'cbf.pkl'), map_location=self.device))
         self.actor.load_state_dict(torch.load(os.path.join(load_dir, 'actor.pkl'), map_location=self.device))
+
+    def apply(self, data: Data) -> Tensor:
+        with torch.no_grad():
+            h = self.cbf(data)
+        with torch.no_grad():
+            action = self.actor(data)
+        action = torch.zeros_like(action, requires_grad=True)
+        learned_action = False
+        i_iter = 0
+        while True:
+            graphs_next = self._env.forward_graph(data, action)
+            h_next = self.cbf(graphs_next)
+            h_dot = (h_next - h) / self._env.dt
+            max_val_h_dot = torch.mean(torch.relu(-h_dot - self.params['alpha'] * h))
+            if max_val_h_dot <= 0 or i_iter > 10000:
+                break
+            else:
+                if learned_action is False:
+                    with torch.no_grad():
+                        action = self.actor(data)
+                    action.requires_grad = True
+                    optim = Adam((action,), lr=0.1)
+                    learned_action = True
+                else:
+                    # action = action - torch.autograd.grad(max_val_h_dot, action)[0] * 10
+                    optim.zero_grad()
+                    max_val_h_dot.backward()
+                    optim.step()
+                    # action = action.detach()
+                    # action.requires_grad = True
+                    i_iter += 1
+
+        return action
+
+        # h = self.cbf(data)
+        # actions = []
+        # for i_node in range(self.num_agents):
+        #     action = cp.Variable(self.action_dim)
+        #     obj = cp.Minimize(cp.sum_squares(action))
+        #     graph_next = self._env.forward_agent(data, action, i_node)
+        #     h_next = self.cbf(graph_next)
+        #     h_dot = (h_next - h) / self._env.dt
+        #     max_val_h_dot = torch.mean(torch.relu(-h_dot - self.params['alpha'] * h))
+        #     constraints = [max_val_h_dot <= 0]
+        #     prob = cp.Problem(obj, constraints)
+        #     result = prob.solve()
+        #     actions.append(torch.tensor(action.value).type_as(data.states))
+        # return torch.cat(actions)
+        # actions = cp.Variable(self.action_dim * self.num_agents)
+        # obj =

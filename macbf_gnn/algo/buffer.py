@@ -10,7 +10,7 @@ class Buffer:
         self._data = []  # list with all graphs
         self.safe_data = []  # list of positions with safe graphs
         self.unsafe_data = []  # list of positions with unsafe graphs
-        self.MAX_SIZE = 1000
+        self.MAX_SIZE = 100000
 
     def append(self, data: Data, is_safe: bool):
         self._data.append(data)
@@ -48,7 +48,6 @@ class Buffer:
                 except ValueError:
                     self.unsafe_data.remove(i)
 
-            # todo: possible issue
             self.safe_data = [i - (self.size - self.MAX_SIZE) for i in self.safe_data]
             self.unsafe_data = [i - (self.size - self.MAX_SIZE) for i in self.unsafe_data]
             del self._data[:self.size - self.MAX_SIZE]  # remove oldest data
@@ -79,10 +78,11 @@ class Buffer:
             index = np.sort(np.random.randint(0, self.size, n))
 
         else:
-            unsafe_num = min(n // 2, len(self.unsafe_data))
-            safe_num = n - unsafe_num
-            index_unsafe = random.sample(self.unsafe_data, unsafe_num)
-            index_safe = random.sample(self.safe_data, safe_num)
+            index_unsafe, index_safe = [], []
+            if len(self.unsafe_data) > 0:
+                index_unsafe = random.choices(self.unsafe_data, k=n // 2)
+            if len(self.unsafe_data) < 0:
+                index_safe = random.choices(self.safe_data, k=n // 2)
             index = sorted(index_safe + index_unsafe)
 
         ub = 0

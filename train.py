@@ -23,9 +23,19 @@ def train(args):
     env = make_env(args.env, args.num_agents, device)
     env_test = make_env(args.env, args.num_agents, device)
 
+    params = {  # TODO: tune this
+        'alpha': 0.1,
+        'eps': 0.02,
+        'inner_iter': 10,
+        'loss_action_coef': 1e-5,
+        'loss_unsafe_coef': 10.,
+        'loss_safe_coef': 10.,
+        'loss_h_dot_coef': 1e4
+    }
+
     # set up logger
     log_path = init_logger(
-        args.log_path, args.env, args.algo, args.seed, vars(args), hyper_params=None
+        args.log_path, args.env, args.algo, args.seed, vars(args), hyper_params=params
     )
 
     # build algorithm
@@ -42,7 +52,7 @@ def train(args):
     )
 
     # start training
-    trainer.train(args.steps, eval_interval=args.steps // 20, eval_epi=5)
+    trainer.train(args.steps, eval_interval=args.steps // 20, eval_epi=0)
 
 
 if __name__ == '__main__':

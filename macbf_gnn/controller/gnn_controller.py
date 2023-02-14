@@ -1,6 +1,7 @@
 import torch.nn as nn
 
 from torch_geometric.nn import Sequential
+from torch_geometric.nn.conv.transformer_conv import TransformerConv
 from torch import Tensor
 from torch_geometric.data import Data
 
@@ -21,12 +22,25 @@ class GNNController(MultiAgentController):
         )
 
         self.feat_transformer = Sequential('x, edge_attr, edge_index', [
-            (ControllerGNNLayer(node_dim=node_dim, edge_dim=edge_dim, output_dim=64, phi_dim=phi_dim),
+            (ControllerGNNLayer(node_dim=node_dim, edge_dim=edge_dim, output_dim=512, phi_dim=phi_dim),
              'x, edge_attr, edge_index -> x'),
             nn.ReLU(),
-            (ControllerGNNLayer(node_dim=64, edge_dim=edge_dim, output_dim=64, phi_dim=phi_dim),
+            (ControllerGNNLayer(node_dim=512, edge_dim=edge_dim, output_dim=128, phi_dim=phi_dim),
+             'x, edge_attr, edge_index -> x'),
+            nn.ReLU(),
+            (ControllerGNNLayer(node_dim=128, edge_dim=edge_dim, output_dim=64, phi_dim=phi_dim),
              'x, edge_attr, edge_index -> x'),
         ])
+        # self.feat_transformer = Sequential('x, edge_index, edge_attr', [
+        #     (TransformerConv(in_channels=node_dim, out_channels=128, edge_dim=edge_dim),
+        #      'x, edge_index, edge_attr -> x'),
+        #     nn.ReLU(),
+        #     (TransformerConv(in_channels=128, out_channels=64, edge_dim=edge_dim),
+        #      'x, edge_index, edge_attr -> x'),
+        #     # nn.ReLU(),
+        #     # (TransformerConv(in_channels=128, out_channels=64, edge_dim=edge_dim),
+        #     #  'x, edge_index, edge_attr -> x'),
+        # ])
         self.feat_2_action = MLP(in_channels=64, out_channels=action_dim, hidden_layers=(64, 64))
 
     def forward(self, data: Data) -> Tensor:

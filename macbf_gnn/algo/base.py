@@ -28,6 +28,7 @@ class Algorithm(ABC):
         self._edge_dim = edge_dim
         self._action_dim = action_dim
         self._device = device
+        self.params = {}
 
     @property
     def num_agents(self) -> int:

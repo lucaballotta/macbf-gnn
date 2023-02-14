@@ -2,6 +2,7 @@ import torch
 
 from torch_geometric.nn import Sequential, aggr
 from torch_geometric.nn.conv.message_passing import MessagePassing
+from torch_geometric.nn.conv.transformer_conv import TransformerConv
 from torch import Tensor, cat
 from torch_sparse import SparseTensor
 

@@ -54,7 +54,7 @@ class Trainer:
         # reset the environment
         data = self.env.reset()
 
-        for step in tqdm(range(1, steps + 1)):
+        for step in tqdm(range(1, steps + 1), ncols=80):
             action = self.algo.step(data)
             next_data, reward, done, info = self.env.step(action)
             if done:
@@ -98,7 +98,7 @@ class Trainer:
             epi_reward = 0.
 
             while True:
-                action = self.algo.act(data)
+                action = self.algo.apply(data)
                 data, reward, done, _ = self.env_test.step(action)
                 epi_reward += reward
                 if done:
