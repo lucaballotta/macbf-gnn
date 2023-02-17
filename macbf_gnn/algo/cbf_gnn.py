@@ -67,6 +67,9 @@ class CBFGNN(nn.Module):
         h = self.feat_2_CBF(x)
         return h
 
+    def forward_explict(self, x: Tensor, edge_index: Tensor) -> Tensor:
+        pass
+
 
 class MACBFGNN(Algorithm):
 
@@ -245,6 +248,7 @@ class MACBFGNN(Algorithm):
         action = torch.zeros_like(action, requires_grad=True)
         learned_action = False
         i_iter = 0
+        optim = None
         while True:
             graphs_next = self._env.forward_graph(data, action)
             h_next = self.cbf(graphs_next)
@@ -260,12 +264,9 @@ class MACBFGNN(Algorithm):
                     optim = Adam((action,), lr=0.1)
                     learned_action = True
                 else:
-                    # action = action - torch.autograd.grad(max_val_h_dot, action)[0] * 10
                     optim.zero_grad()
                     max_val_h_dot.backward()
                     optim.step()
-                    # action = action.detach()
-                    # action.requires_grad = True
                     i_iter += 1
 
         return action

@@ -101,11 +101,11 @@ class SimpleCar(MultiAgentEnv):
                 i += 1
         else:
             for i in range(self.num_agents // 2):
-                states[i] = torch.tensor([i * self._params['car_radius'] * 12, 0], device=self.device)
-                states[i + self.num_agents // 2] = torch.tensor([i * self._params['car_radius'] * 12,
+                states[i] = torch.tensor([i * self._params['car_radius'] * 10, 0], device=self.device)
+                states[i + self.num_agents // 2] = torch.tensor([i * self._params['car_radius'] * 10 + self._params['car_radius'],
                                                                  self._params['car_radius'] * 20], device=self.device)
-                goals[i] = states[i + self.num_agents // 2]
-                goals[i + self.num_agents // 2] = states[i]
+                goals[i] = states[i + self.num_agents // 2] - self._params['car_radius']
+                goals[i + self.num_agents // 2] = states[i] + self._params['car_radius']
 
         # add velocity
         states = torch.cat([states, torch.zeros(self.num_agents, 2, device=self.device)], dim=1)
