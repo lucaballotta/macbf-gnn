@@ -15,8 +15,12 @@ def test(args):
     # set random seed
     set_seed(args.seed)
 
-    # testing will be done on cpu
-    device = torch.device('cpu')
+    # set up testing device
+    use_cuda = torch.cuda.is_available() and not args.cpu and args.no_mp
+    if use_cuda:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+    device = torch.device('cuda' if use_cuda else 'cpu')
+    # device = torch.device('cpu')
 
     # load training settings
     try:
@@ -39,7 +43,8 @@ def test(args):
         node_dim=env.node_dim,
         edge_dim=env.edge_dim,
         action_dim=env.action_dim,
-        device=device
+        device=device,
+        hyperparams=settings['hyper_params']
     )
     if args.path is None:
         assert args.env is not None and args.num_agents is not None
@@ -71,17 +76,22 @@ def test(args):
         os.mkdir(video_path)
 
     # evaluate policy
-    pool = multiprocess.Pool()
-    arguments = [(algo.act_strict, env, np.random.randint(100000), not args.no_video) for _ in range(args.epi)]
-    print('> Processing...')
     start_time = time.time()
-    results = pool.starmap(eval_ctrl_epi, arguments)
-    rewards, lengths, video = zip(*results)
+    if not args.no_mp:
+        pool = multiprocess.Pool()
+        arguments = [(algo.apply, env, np.random.randint(100000), not args.no_video) for _ in range(args.epi)]
+        print('> Processing...')
+        results = pool.starmap(eval_ctrl_epi, arguments)
+    else:
+        results = []
+        for i in range(args.epi):
+            results.append(eval_ctrl_epi(algo.apply, env, np.random.randint(100000), not args.no_video))
+    rewards, lengths, video, info = zip(*results)
     video = sum(video, ())
 
     # make video
-    print(f'> Making video...')
     if not args.no_video:
+        print(f'> Making video...')
         out = cv2.VideoWriter(
             os.path.join(video_path, f'reward{np.mean(rewards):.2f}.mp4'),
             cv2.VideoWriter_fourcc(*'mp4v'),
@@ -94,8 +104,22 @@ def test(args):
             out.write(fig)
         out.release()
 
+    # calculate safe rate
+    safe_traj = 0
+    n_traj = 0
+    safe_rate = 0.
+    for i in info:
+        if 'safe' in i.keys():
+            safe_traj += i['safe']
+            n_traj += 1
+    if n_traj > 0:
+        safe_rate = float(safe_traj) / float(n_traj)
+
     # print evaluation results
-    print(f'average reward: {np.mean(rewards):.2f}, average length: {np.mean(lengths):.2f}')
+    verbose = f'average reward: {np.mean(rewards):.2f}, average length: {np.mean(lengths):.2f}'
+    if n_traj > 0:
+        verbose += f', safe rate: {safe_rate}'
+    print(verbose)
     print(f'> Done in {time.time() - start_time:.0f}s')
 
 
@@ -109,9 +133,12 @@ if __name__ == '__main__':
     parser.add_argument('--iter', type=int, default=None)
     parser.add_argument('--epi', type=int, default=5)
     parser.add_argument('--no-video', action='store_true', default=False)
+    parser.add_argument('--gpu', type=int, default=0)
 
     # default
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--cpu', action='store_true', default=False)
+    parser.add_argument('--no-mp', action='store_true', default=False)
 
     args = parser.parse_args()
     test(args)

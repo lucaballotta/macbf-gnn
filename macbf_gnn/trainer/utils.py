@@ -8,6 +8,8 @@ import seaborn as sns
 
 from typing import Tuple, Callable, Optional, List, Union, Any
 from torch_geometric.data import Data, Batch
+from torch import Tensor
+from tqdm import tqdm
 
 from macbf_gnn.env import MultiAgentEnv
 
@@ -107,7 +109,7 @@ def read_settings(path: str):
 
 def eval_ctrl_epi(
         controller: Callable, env: MultiAgentEnv, seed: int = 0, make_video: bool = True, verbose: bool = True,
-) -> tuple[float, float, Tuple[Union[tuple[np.array, ...], np.array]]]:
+) -> tuple[float, float, Tuple[Union[tuple[np.array, ...], np.array]], dict]:
     """
     Evaluate the controller for one episode.
 
@@ -132,6 +134,8 @@ def eval_ctrl_epi(
         episode length
     video: Optional[Tuple[np.array]],
         a tuple of numpy arrays
+    info: dict,
+        a dictionary of other information, including safe or not
     """
     set_seed(seed)
     epi_length = 0.
@@ -139,12 +143,17 @@ def eval_ctrl_epi(
     video = []
     data = env.reset()
     t = 0
+    safe = True
+    pbar = tqdm()
     while True:
         action = controller(data)
-        next_data, reward, done, _ = env.step(action)
+        next_data, reward, done, info = env.step(action)
         epi_length += 1
         epi_reward += reward
         t += 1
+        pbar.update(1)
+        if 'safe' in info.keys():
+            safe = safe and info['safe']
 
         if make_video:
             video.append(env.render())
@@ -153,12 +162,17 @@ def eval_ctrl_epi(
 
         if done:
             if verbose:
-                print(f'reward: {epi_reward:.2f}, length: {epi_length}')
+                message = f'reward: {epi_reward:.2f}, length: {epi_length}'
+                if 'safe' in info.keys():
+                    message += f', safe: {safe}'
+                print(message)
             break
-    return epi_reward, epi_length, tuple(video)
+    return epi_reward, epi_length, tuple(video), {'safe': safe}
 
 
-def plot_cbf_contour(cbf_fun: Callable, data: Data, env: MultiAgentEnv, agent_id: int, x_dim: int, y_dim: int):
+def plot_cbf_contour(
+        cbf_fun: Callable, data: Data, env: MultiAgentEnv, agent_id: int, x_dim: int, y_dim: int, action: Tensor = None
+):
     n_mesh = 30
     low_lim, high_lim = env.state_lim
     x, y = np.meshgrid(
@@ -197,5 +211,7 @@ def plot_cbf_contour(cbf_fun: Callable, data: Data, env: MultiAgentEnv, agent_id
     # plt.ylim((lower_limit[y_dim].cpu(), upper_limit[y_dim].cpu()))
     plt.xlabel(f'dim: {x_dim}')
     plt.ylabel(f'dim: {y_dim}')
+    if action is not None:
+        ax.text(0., 0.86, f'action: {action.cpu().numpy()}', transform=ax.transAxes, fontsize=14)
 
     return ax

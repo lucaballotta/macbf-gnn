@@ -33,7 +33,7 @@ class Nominal(Algorithm):
             node_dim=self.node_dim,
             edge_dim=self.edge_dim,
             action_dim=self.action_dim
-        )
+        ).to(device)
 
     def step(self, data: Data) -> Tensor:
         raise NotImplementedError
@@ -53,3 +53,6 @@ class Nominal(Algorithm):
     def act(self, data: Data) -> Tensor:
         with torch.no_grad():
             return self.actor(data)
+
+    def apply(self, data: Data) -> Tensor:
+        return self.act(data)

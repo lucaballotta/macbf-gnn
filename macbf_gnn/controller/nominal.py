@@ -17,4 +17,4 @@ class NominalController(MultiAgentController):
         )
 
     def forward(self, data: Data) -> Tensor:
-        return torch.zeros(data.num_nodes, self.action_dim)
+        return torch.zeros(data.num_nodes, self.action_dim).type_as(data.states)

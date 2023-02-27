@@ -54,6 +54,7 @@ class Trainer:
         # reset the environment
         data = self.env.reset()
 
+        verbose = None
         for step in tqdm(range(1, steps + 1), ncols=80):
             action = self.algo.step(data)
             next_data, reward, done, info = self.env.step(action)
@@ -64,12 +65,18 @@ class Trainer:
 
             # update the algorithm
             if self.algo.is_update(step):
-                self.algo.update(step, self.writer)
+                verbose = self.algo.update(step, self.writer)
 
             # evaluate the algorithm
             if step % eval_interval == 0:
-                reward, eval_info = self.eval(step, eval_epi)
-                tqdm.write(f'step: {step}, reward: {reward:.2f}, time: {time() - start_time:.0f}s')
+                if eval_epi > 0:
+                    reward, eval_info = self.eval(step, eval_epi)
+                    tqdm.write(f'step: {step}, reward: {reward:.2f}, time: {time() - start_time:.0f}s')
+                if verbose is not None:
+                    verbose_update = f'step: {step}'
+                    for key in verbose.keys():
+                        verbose_update += f', {key}: {verbose[key]:.3f}'
+                    tqdm.write(verbose_update)
                 self.algo.save(os.path.join(self.model_dir, f'step_{step}'))
 
         print(f'> Done in {time() - start_time:.0f} seconds')

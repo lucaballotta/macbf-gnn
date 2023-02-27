@@ -24,13 +24,13 @@ def train(args):
     env_test = make_env(args.env, args.num_agents, device)
 
     params = {  # TODO: tune this
-        'alpha': 0.1,
+        'alpha': 0.5,
         'eps': 0.02,
         'inner_iter': 10,
-        'loss_action_coef': 1e-5,
+        'loss_action_coef': 0.01,
         'loss_unsafe_coef': 10.,
         'loss_safe_coef': 10.,
-        'loss_h_dot_coef': 1e4
+        'loss_h_dot_coef': 10.
     }
 
     # set up logger
@@ -40,7 +40,7 @@ def train(args):
 
     # build algorithm
     algo = make_algo(
-        args.algo, env, args.num_agents, env.node_dim, env.edge_dim, env.action_dim, device
+        args.algo, env, args.num_agents, env.node_dim, env.edge_dim, env.action_dim, device, hyperparams=params
     )
 
     # set up trainer

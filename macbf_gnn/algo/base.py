@@ -126,7 +126,7 @@ class Algorithm(ABC):
         pass
 
     @abstractmethod
-    def update(self, step: int, writer: SummaryWriter = None):
+    def update(self, step: int, writer: SummaryWriter = None) -> dict:
         """
         Update the models
 
@@ -160,5 +160,21 @@ class Algorithm(ABC):
         ----------
         load_dir: str,
             folder to load the models
+        """
+        pass
+
+    def apply(self, data: Data) -> Tensor:
+        """
+        Apply the agent in the environment during test
+
+        Parameters
+        ----------
+        data: Data,
+            data of the current multi-agent map or batched data using Batch.from_data_list()
+
+        Returns
+        -------
+        action: (bs, n, action_dim)
+            actions of all the agents
         """
         pass

@@ -17,8 +17,13 @@ def plot_cbf(args):
     # set random seed
     set_seed(args.seed)
 
+    # set up testing device
+    use_cuda = torch.cuda.is_available() and not args.cpu
+    if use_cuda:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+    device = torch.device('cuda' if use_cuda else 'cpu')
     # testing will be done on cpu
-    device = torch.device('cpu')
+    # device = torch.device('cpu')
 
     # load training settings
     try:
@@ -32,7 +37,17 @@ def plot_cbf(args):
         num_agents=settings['num_agents'],
         device=device
     )
-    env.test()
+    # env.test()
+
+    params = {  # TODO: tune this
+        'alpha': 0.5,
+        'eps': 0.02,
+        'inner_iter': 10,
+        'loss_action_coef': 0.01,
+        'loss_unsafe_coef': 10.,
+        'loss_safe_coef': 10.,
+        'loss_h_dot_coef': 10.
+    }
 
     # build algorithm
     algo = make_algo(
@@ -42,7 +57,8 @@ def plot_cbf(args):
         node_dim=env.node_dim,
         edge_dim=env.edge_dim,
         action_dim=env.action_dim,
-        device=device
+        device=device,
+        hyperparams=settings['hyper_params']
     )
     model_path = os.path.join(args.path, 'models')
     if args.iter is not None:
@@ -71,7 +87,7 @@ def plot_cbf(args):
         action = algo.apply(data)
         next_data, reward, done, _ = env.step(action)
         if hasattr(algo, 'cbf'):
-            ax = plot_cbf_contour(algo.cbf, data, env, args.agent, args.x_dim, args.y_dim)
+            ax = plot_cbf_contour(algo.cbf, data, env, args.agent, args.x_dim, args.y_dim, action[args.agent, :])
             h_prev = algo.cbf(data)[args.agent]
             h_post = algo.cbf(next_data)[args.agent]
             h_deriv = (h_post - h_prev) / env.dt + algo.params['alpha'] * h_prev
@@ -97,9 +113,11 @@ if __name__ == '__main__':
     parser.add_argument('--agent', type=int, default=0)
     parser.add_argument('--x-dim', type=int, default=0)
     parser.add_argument('--y-dim', type=int, default=1)
+    parser.add_argument('--gpu', type=int, default=0)
 
     # default
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--cpu', action='store_true', default=False)
 
     args = parser.parse_args()
     plot_cbf(args)

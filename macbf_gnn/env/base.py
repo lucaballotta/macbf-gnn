@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod, abstractproperty
 from typing import Tuple, Optional, Union
 from torch import Tensor
 from torch_geometric.data import Data
+from cvxpy import Variable
 
 
 class MultiAgentEnv(ABC):
@@ -186,7 +187,7 @@ class MultiAgentEnv(ABC):
         done: bool,
             if the simulation is ended or not
         info: dict,
-            other useful information
+            other useful information, including safe or unsafe
         """
         pass
 
@@ -211,8 +212,12 @@ class MultiAgentEnv(ABC):
         pass
 
     @abstractmethod
+    def edge_dynamics(self, data: Data, action: Variable) -> Variable:
+        pass
+
+    @abstractmethod
     def render(
-            self, traj: Optional[Tuple[Data, ...]] = None, return_ax: bool = False, plot_edge: bool = False
+            self, traj: Optional[Tuple[Data, ...]] = None, return_ax: bool = False, plot_edge: bool = True
     ) -> Union[Tuple[np.array, ...], np.array]:
         """
         Plot the environment for the current time step.
