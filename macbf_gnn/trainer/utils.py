@@ -124,7 +124,7 @@ def read_settings(path: str) -> dict:
 
 def eval_ctrl_epi(
         controller: Callable, env: MultiAgentEnv, seed: int = 0, make_video: bool = True, verbose: bool = True,
-) -> tuple[float, float, Tuple[Union[tuple[np.array, ...], np.array]], dict]:
+) -> Tuple[float, float, Tuple[Union[Tuple[np.array, ...], np.array]], dict]:
     """
     Evaluate the controller for one episode.
 
