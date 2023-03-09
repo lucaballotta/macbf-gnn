@@ -1,23 +1,22 @@
 import numpy as np
 import torch
-import networkx as nx
 import matplotlib.pyplot as plt
 
 from typing import Tuple, Optional, Union
 from torch import Tensor
 from torch_geometric.data import Data
 from torch_geometric.transforms.radius_graph import RadiusGraph
-from torch_geometric.utils import to_networkx, mask_to_index
-from cvxpy import Variable
+from torch_geometric.utils import mask_to_index
+from cvxpy import Variable, Expression
 
 from .utils import lqr, plot_graph_3d
 from .base import MultiAgentEnv
 
 
-class Drone(MultiAgentEnv):
+class SimpleDrone(MultiAgentEnv):
 
     def __init__(self, num_agents: int, device: torch.device, dt: float = 0.03, params: dict = None):
-        super(Drone, self).__init__(num_agents, device, dt, params)
+        super(SimpleDrone, self).__init__(num_agents, device, dt, params)
 
         # builder of the graph
         self._builder = RadiusGraph(self._params['comm_radius'], max_num_neighbors=self.num_agents)
@@ -48,7 +47,7 @@ class Drone(MultiAgentEnv):
 
     @property
     def max_episode_steps(self) -> int:
-        return 200
+        return 500
 
     @property
     def default_params(self) -> dict:
@@ -56,7 +55,7 @@ class Drone(MultiAgentEnv):
             'area_size': 1.,
             'drone_radius': 0.05,
             'comm_radius': 0.5,
-            'dist2goal': 0.03
+            'dist2goal': 0.05
         }
 
     @property
@@ -78,7 +77,12 @@ class Drone(MultiAgentEnv):
         B[5, 2] = 6.
         return B
 
-    def dynamics(self, x: Tensor, u: Tensor) -> Tensor:
+    def dynamics(self, x: Tensor, u: Union[Tensor, Expression]) -> Union[Tensor, Expression]:
+        if isinstance(u, Expression):
+            A = self._A.cpu().numpy()
+            B = self._B.cpu().numpy()
+
+
         # xdot = Ax + Bu
         xdot = x @ self._A.t() + u @ self._B.t()
         return xdot
