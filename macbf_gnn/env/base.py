@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod, abstractproperty
 from typing import Tuple, Optional, Union
 from torch import Tensor
 from torch_geometric.data import Data
-from cvxpy import Variable
+from cvxpy import Variable, Expression
 
 
 class MultiAgentEnv(ABC):
@@ -138,7 +138,7 @@ class MultiAgentEnv(ABC):
         pass
 
     @abstractmethod
-    def dynamics(self, x: Tensor, u: Tensor) -> Tensor:
+    def dynamics(self, x: Tensor, u: Union[Tensor, Expression]) -> Union[Tensor, Expression]:
         """
         Dynamics of a single agent \dot{x} = f(x, u).
 
@@ -146,12 +146,12 @@ class MultiAgentEnv(ABC):
         ----------
         x: Tensor (bs, state_dim),
             current state of the agent
-        u: Tensor (bs, action_dim),
+        u: Union[Tensor, Expression] (bs, action_dim) or (action_dim,),
             control input
 
         Returns
         -------
-        xdot: Tensor (bs, state_dim),
+        xdot: Union[Tensor, Expression] (bs, state_dim),
             time derivative of the state
         """
         pass
@@ -211,9 +211,13 @@ class MultiAgentEnv(ABC):
         """
         pass
 
-    @abstractmethod
+    @torch.no_grad()
     def edge_dynamics(self, data: Data, action: Variable) -> Variable:
-        pass
+        action = action + self.u_ref(data).cpu().numpy()
+        state_dot = self.dynamics(data.states, action)
+        edge_index = data.edge_index.cpu().numpy()
+        edge_dot = state_dot[edge_index[0]] - state_dot[edge_index[1]]
+        return edge_dot
 
     @abstractmethod
     def render(
@@ -262,26 +266,6 @@ class MultiAgentEnv(ABC):
             limits of the state
         """
         pass
-
-    # @abstractproperty
-    # def node_lim(self) -> Tuple[Tensor, Tensor]:
-    #     """
-    #     Returns
-    #     -------
-    #     lower limit, upper limit: Tuple[Tensor, Tensor],
-    #         limits of the node information
-    #     """
-    #     pass
-    #
-    # @abstractproperty
-    # def edge_lim(self) -> Tuple[Tensor, Tensor]:
-    #     """
-    #     Returns
-    #     -------
-    #     lower limit, upper limit: Tuple[Tensor, Tensor],
-    #         limits of the edge information
-    #     """
-    #     pass
 
     @abstractproperty
     def action_lim(self) -> Tuple[Tensor, Tensor]:

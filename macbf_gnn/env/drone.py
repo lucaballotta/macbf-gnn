@@ -8,6 +8,7 @@ from torch import Tensor
 from torch_geometric.data import Data
 from torch_geometric.transforms.radius_graph import RadiusGraph
 from torch_geometric.utils import to_networkx, mask_to_index
+from cvxpy import Variable
 
 from .utils import lqr, plot_graph_3d
 from .base import MultiAgentEnv
@@ -15,7 +16,7 @@ from .base import MultiAgentEnv
 
 class Drone(MultiAgentEnv):
 
-    def __init__(self, num_agents: int, device: torch.device, dt: float = 0.05, params: dict = None):
+    def __init__(self, num_agents: int, device: torch.device, dt: float = 0.03, params: dict = None):
         super(Drone, self).__init__(num_agents, device, dt, params)
 
         # builder of the graph
@@ -160,6 +161,9 @@ class Drone(MultiAgentEnv):
 
         return data_next
 
+    def edge_dynamics(self, data: Data, action: Variable) -> Variable:
+        raise NotImplementedError
+
     def render(self, traj: Optional[Tuple[Data, ...]] = None, return_ax: bool = False, plot_edge: bool = True) -> \
             Union[Tuple[np.array, ...], np.array]:
         return_tuple = True
@@ -227,7 +231,7 @@ class Drone(MultiAgentEnv):
 
     @property
     def action_lim(self) -> Tuple[Tensor, Tensor]:
-        upper_limit = torch.ones(self.action_dim, device=self.device) * 1.0
+        upper_limit = torch.ones(self.action_dim, device=self.device) * 10.0
         lower_limit = - upper_limit
         return lower_limit, upper_limit
 

@@ -4,7 +4,6 @@ import cv2
 import numpy as np
 import argparse
 import time
-import multiprocess
 
 from macbf_gnn.trainer.utils import set_seed, read_settings, eval_ctrl_epi
 from macbf_gnn.env import make_env
@@ -16,11 +15,10 @@ def test(args):
     set_seed(args.seed)
 
     # set up testing device
-    use_cuda = torch.cuda.is_available() and not args.cpu and args.no_mp
+    use_cuda = torch.cuda.is_available() and not args.cpu
     if use_cuda:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
     device = torch.device('cuda' if use_cuda else 'cpu')
-    # device = torch.device('cpu')
 
     # load training settings
     try:
@@ -77,32 +75,11 @@ def test(args):
 
     # evaluate policy
     start_time = time.time()
-    if not args.no_mp:
-        pool = multiprocess.Pool()
-        arguments = [(algo.apply, env, np.random.randint(100000), not args.no_video) for _ in range(args.epi)]
-        print('> Processing...')
-        results = pool.starmap(eval_ctrl_epi, arguments)
-    else:
-        results = []
-        for i in range(args.epi):
-            results.append(eval_ctrl_epi(algo.apply, env, np.random.randint(100000), not args.no_video))
+    results = []
+    for i in range(args.epi):
+        results.append(eval_ctrl_epi(algo.apply, env, np.random.randint(100000), not args.no_video))
     rewards, lengths, video, info = zip(*results)
     video = sum(video, ())
-
-    # make video
-    if not args.no_video:
-        print(f'> Making video...')
-        out = cv2.VideoWriter(
-            os.path.join(video_path, f'reward{np.mean(rewards):.2f}.mp4'),
-            cv2.VideoWriter_fourcc(*'mp4v'),
-            25,
-            (video[-1].shape[1], video[-1].shape[0])
-        )
-
-        # release the video
-        for fig in video:
-            out.write(fig)
-        out.release()
 
     # calculate safe rate
     safe_traj = 0
@@ -115,11 +92,28 @@ def test(args):
     if n_traj > 0:
         safe_rate = float(safe_traj) / float(n_traj)
 
+    # make video
+    if not args.no_video:
+        print(f'> Making video...')
+        out = cv2.VideoWriter(
+            os.path.join(video_path, f'seed{args.seed}_reward{np.mean(rewards):.2f}_safe{safe_rate}.mp4'),
+            cv2.VideoWriter_fourcc(*'mp4v'),
+            25,
+            (video[-1].shape[1], video[-1].shape[0])
+        )
+
+        # release the video
+        for fig in video:
+            out.write(fig)
+        out.release()
+
     # print evaluation results
     verbose = f'average reward: {np.mean(rewards):.2f}, average length: {np.mean(lengths):.2f}'
     if n_traj > 0:
         verbose += f', safe rate: {safe_rate}'
     print(verbose)
+    with open(os.path.join(args.path, 'test_log.csv'), "a") as f:
+        f.write(f'{safe_rate},{args.epi}\n')
     print(f'> Done in {time.time() - start_time:.0f}s')
 
 
@@ -138,7 +132,6 @@ if __name__ == '__main__':
     # default
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--cpu', action='store_true', default=False)
-    parser.add_argument('--no-mp', action='store_true', default=False)
 
     args = parser.parse_args()
     test(args)

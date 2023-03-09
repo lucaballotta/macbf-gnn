@@ -51,6 +51,7 @@ class Algorithm(ABC):
         return self._device
 
     @abstractmethod
+    @torch.no_grad()
     def act(self, data: Data) -> Tensor:
         """
         Get actions using the current controller without gradient.
@@ -69,6 +70,7 @@ class Algorithm(ABC):
         pass
 
     @abstractmethod
+    @torch.no_grad()
     def step(self, data: Data) -> Tensor:
         """
         Do one step forward in training. Different from act() by doing necessary steps for training.

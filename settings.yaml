@@ -1,2 +1,3 @@
 SimpleCar:
+  -n: 10
   --steps: 500000

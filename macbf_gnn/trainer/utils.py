@@ -5,8 +5,9 @@ import datetime
 import yaml
 import matplotlib.pyplot as plt
 import seaborn as sns
+import random
 
-from typing import Tuple, Callable, Optional, List, Union, Any
+from typing import Tuple, Callable, Optional, Union
 from torch_geometric.data import Data, Batch
 from torch import Tensor
 from tqdm import tqdm
@@ -15,10 +16,11 @@ from macbf_gnn.env import MultiAgentEnv
 
 
 def set_seed(seed: int):
+    os.environ['PYTHONHASHSEED'] = str(seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
+    random.seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
 def init_logger(
@@ -101,7 +103,20 @@ def init_logger(
     return log_path
 
 
-def read_settings(path: str):
+def read_settings(path: str) -> dict:
+    """
+    Read the training settings.
+
+    Parameters
+    ----------
+    path: str,
+        path to the training log
+
+    Returns
+    -------
+    settings: dict,
+        a dict of training settings
+    """
     with open(os.path.join(path, 'settings.yaml')) as f:
         settings = yaml.load(f, Loader=yaml.FullLoader)
     return settings
@@ -171,8 +186,38 @@ def eval_ctrl_epi(
 
 
 def plot_cbf_contour(
-        cbf_fun: Callable, data: Data, env: MultiAgentEnv, agent_id: int, x_dim: int, y_dim: int, action: Tensor = None
+        cbf_fun: Callable,
+        data: Data,
+        env: MultiAgentEnv,
+        agent_id: int,
+        x_dim: int,
+        y_dim: int,
+        action: Optional[Tensor] = None
 ):
+    """
+    Plot the contour of the learned CBF.
+
+    Parameters
+    ----------
+    cbf_fun: Callable,
+        function for the learned CBF
+    data: Data,
+        current graph
+    env: MultiAgentEnv,
+        current environment
+    agent_id: int,
+        the CBF of this agent is plotted
+    x_dim: int,
+        the x dimension for the plot
+    y_dim: int,
+        the y dimension for the plot
+    action: Tensor,
+        the current action taken
+
+    Returns
+    -------
+    ax: the plot
+    """
     n_mesh = 30
     low_lim, high_lim = env.state_lim
     x, y = np.meshgrid(
@@ -180,38 +225,47 @@ def plot_cbf_contour(
         np.linspace(low_lim[y_dim].cpu(), high_lim[y_dim].cpu(), n_mesh)
     )
     plot_data = []
-    # all_cbf = []
     for i in range(n_mesh):
-        cbf_row = []
         for j in range(n_mesh):
             state = data.states
             state[agent_id, x_dim] = x[i, j]
             state[agent_id, y_dim] = y[i, j]
-            # new_data = data
-            # new_data.states = state
-            # new_data.pos = state[:, :2]
             new_data = Data(x=data.x, edge_index=data.edge_index, pos=state[:, :2],
                             edge_attr=state[data.edge_index[0]]-state[data.edge_index[1]])
-            # new_data = Data(x=torch.zeros_like(state), pos=state[:, :2], states=state)
-            # new_data = env.add_communication_links(new_data)
             plot_data.append(new_data)
-    #         cbf = cbf_fun(new_data).view(1, 1, env.num_agents)[:, :, agent_id].detach().cpu()
-    #         cbf_row.append(cbf)
-    #     all_cbf.append(torch.cat(cbf_row, dim=1))
-    # cbf = torch.cat(all_cbf, dim=0)
     plot_data = Batch.from_data_list(plot_data)
     cbf = cbf_fun(plot_data).view(n_mesh, n_mesh, env.num_agents)[:, :, agent_id].detach().cpu()
     ax = env.render(return_ax=True)
-    # ax = plt.imshow(fig)
     plt.contourf(x, y, cbf, cmap=sns.color_palette("rocket", as_cmap=True), levels=15, alpha=0.5)
     plt.colorbar()
     plt.contour(x, y, cbf, levels=[0.0], colors='blue')
-    # plt.scatter(env.goal_point[0, x_dim].cpu(), env.goal_point[0, y_dim].cpu(), s=10, alpha=1, c='black')
-    # plt.xlim((lower_limit[x_dim].cpu(), upper_limit[x_dim].cpu()))
-    # plt.ylim((lower_limit[y_dim].cpu(), upper_limit[y_dim].cpu()))
     plt.xlabel(f'dim: {x_dim}')
     plt.ylabel(f'dim: {y_dim}')
     if action is not None:
-        ax.text(0., 0.86, f'action: {action.cpu().numpy()}', transform=ax.transAxes, fontsize=14)
+        ax.text(0., 0.89, f'action: {action.cpu().detach().numpy()}', transform=ax.transAxes, fontsize=14)
 
     return ax
+
+
+def read_params(env: str) -> Optional[dict]:
+    """
+    Read the pre-defined training hyper-parameters.
+
+    Parameters
+    ----------
+    env: str,
+        name of the environment
+
+    Returns
+    -------
+    params: Optional[dict],
+        the training hyper-parameters if the environment is found, or None
+    """
+    cur_path = os.path.dirname(__file__)
+    path = os.path.join(cur_path, 'hyperparams.yaml')
+    with open(path) as f:
+        params = yaml.safe_load(f)
+    if env in params.keys():
+        return params[env]
+    else:
+        return None

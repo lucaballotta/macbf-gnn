@@ -1,10 +1,6 @@
 import torch
 import os
-import cv2
-import numpy as np
 import argparse
-import time
-import multiprocess
 import matplotlib.pyplot as plt
 import shutil
 
@@ -22,8 +18,6 @@ def plot_cbf(args):
     if use_cuda:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
     device = torch.device('cuda' if use_cuda else 'cpu')
-    # testing will be done on cpu
-    # device = torch.device('cpu')
 
     # load training settings
     try:
@@ -37,17 +31,7 @@ def plot_cbf(args):
         num_agents=settings['num_agents'],
         device=device
     )
-    # env.test()
-
-    params = {  # TODO: tune this
-        'alpha': 0.5,
-        'eps': 0.02,
-        'inner_iter': 10,
-        'loss_action_coef': 0.01,
-        'loss_unsafe_coef': 10.,
-        'loss_safe_coef': 10.,
-        'loss_h_dot_coef': 10.
-    }
+    env.test()
 
     # build algorithm
     algo = make_algo(
@@ -83,24 +67,34 @@ def plot_cbf(args):
     # simulate the environment and plot the CBFs
     data = env.reset()
     t = 0
-    while True:
-        action = algo.apply(data)
-        next_data, reward, done, _ = env.step(action)
-        if hasattr(algo, 'cbf'):
-            ax = plot_cbf_contour(algo.cbf, data, env, args.agent, args.x_dim, args.y_dim, action[args.agent, :])
-            h_prev = algo.cbf(data)[args.agent]
-            h_post = algo.cbf(next_data)[args.agent]
-            h_deriv = (h_post - h_prev) / env.dt + algo.params['alpha'] * h_prev
-            if h_deriv < 0:
-                ax.text(0., 0.93, f"violate derivative term: {h_deriv.item():.2f}", transform=ax.transAxes, fontsize=14)
-            plt.savefig(os.path.join(fig_path, f'{t}.png'))
-            plt.close()
-        else:
-            raise KeyError('The algorithm must has a CBF function')
-        data = next_data
-        t += 1
-        if done:
-            break
+    for i_epi in range(args.epi):
+        os.mkdir(os.path.join(fig_path, f'epi_{i_epi}'))
+        while True:
+            action = algo.apply(data)
+            next_data, reward, done, _ = env.step(action)
+            if hasattr(algo, 'cbf'):
+                action_real = action + env.u_ref(data)
+                ax = plot_cbf_contour(
+                    algo.cbf, data, env, args.agent, args.x_dim, args.y_dim, action_real[args.agent, :])
+                h_prev = algo.cbf(data)
+                h_post = algo.cbf(next_data)
+                h_deriv = (h_post - h_prev) / env.dt + algo.params['alpha'] * h_prev
+                vio_agent = torch.nonzero(torch.relu(-h_deriv))
+                if vio_agent.shape[0] > 0:
+                    vio_text = f'violate agent: '
+                    for i in vio_agent:
+                        vio_text += f'{i[0].item()}: {h_deriv[i[0]].item()}, '
+                    ax.text(0., 0.93, vio_text[:-2], transform=ax.transAxes, fontsize=14)
+                plt.savefig(os.path.join(os.path.join(fig_path, f'epi_{i_epi}'), f'{t}.png'))
+                plt.close()
+            else:
+                raise KeyError('The algorithm must has a CBF function')
+            data = next_data
+            t += 1
+            if done:
+                t = 0
+                data = env.reset()
+                break
 
 
 if __name__ == '__main__':
@@ -110,6 +104,7 @@ if __name__ == '__main__':
     parser.add_argument('--path', type=str, default=None)
     parser.add_argument('--env', type=str, default=None)
     parser.add_argument('--iter', type=int, default=None)
+    parser.add_argument('--epi', type=int, default=3)
     parser.add_argument('--agent', type=int, default=0)
     parser.add_argument('--x-dim', type=int, default=0)
     parser.add_argument('--y-dim', type=int, default=1)

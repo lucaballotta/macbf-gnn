@@ -5,7 +5,7 @@ import os
 from macbf_gnn.env import make_env
 from macbf_gnn.algo import make_algo
 from macbf_gnn.trainer import Trainer
-from macbf_gnn.trainer.utils import set_seed, init_logger
+from macbf_gnn.trainer.utils import set_seed, init_logger, read_params
 
 
 def train(args):
@@ -23,15 +23,21 @@ def train(args):
     env = make_env(args.env, args.num_agents, device)
     env_test = make_env(args.env, args.num_agents, device)
 
-    params = {  # TODO: tune this
-        'alpha': 0.5,
-        'eps': 0.02,
-        'inner_iter': 10,
-        'loss_action_coef': 0.01,
-        'loss_unsafe_coef': 10.,
-        'loss_safe_coef': 10.,
-        'loss_h_dot_coef': 10.
-    }
+    # set training params
+    params = read_params(args.env)
+    if params is None:
+        params = {  # set up custom hyper-parameters
+            'alpha': 1.0,
+            'eps': 0.02,
+            'inner_iter': 10,
+            'loss_action_coef': 0.001,
+            'loss_unsafe_coef': 1.0,
+            'loss_safe_coef': 1.0,
+            'loss_h_dot_coef': 0.1
+        }
+        print('> Using custom hyper-parameters')
+    else:
+        print('> Using pre-defined hyper-parameters')
 
     # set up logger
     log_path = init_logger(

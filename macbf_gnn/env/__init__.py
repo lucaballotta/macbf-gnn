@@ -5,7 +5,7 @@ from .simple_car import SimpleCar
 from .drone import Drone
 
 
-def make_env(env: str, num_agents: int, device: torch.device, dt: float = 0.01, params: dict = None):
+def make_env(env: str, num_agents: int, device: torch.device, dt: float = 0.03, params: dict = None):
     if env == 'SimpleCar':
         return SimpleCar(num_agents, device, dt, params)
     elif env == 'Drone':

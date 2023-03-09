@@ -1,7 +1,6 @@
 import torch.nn as nn
 import os
 import torch
-import random
 import numpy as np
 import cvxpy as cp
 
@@ -10,8 +9,6 @@ from torch_geometric.data import Data, Batch
 from torch_geometric.nn import Sequential
 from torch import Tensor
 from torch.optim import Adam
-from torch.autograd.functional import jacobian
-from torch_geometric.nn.conv.transformer_conv import TransformerConv
 from typing import Optional
 
 from macbf_gnn.nn import MLP, CBFGNNLayer
@@ -37,16 +34,6 @@ class CBFGNN(nn.Module):
             (CBFGNNLayer(node_dim=128, edge_dim=edge_dim, output_dim=64, phi_dim=phi_dim),
              'x, edge_attr, edge_index -> x'),
         ])
-        # self.feat_transformer = Sequential('x, edge_index, edge_attr', [
-        #     (TransformerConv(in_channels=node_dim, out_channels=128, edge_dim=edge_dim),
-        #      'x, edge_index, edge_attr -> x'),
-        #     nn.ReLU(),
-        #     (TransformerConv(in_channels=128, out_channels=64, edge_dim=edge_dim),
-        #      'x, edge_index, edge_attr -> x'),
-        #     # nn.ReLU(),
-        #     # (TransformerConv(in_channels=128, out_channels=64, edge_dim=edge_dim),
-        #     #  'x, edge_index, edge_attr -> x'),
-        # ])
         self.feat_2_CBF = MLP(in_channels=64, out_channels=1, hidden_layers=(64, 64))
 
     def forward(self, data: Data) -> Tensor:
@@ -119,23 +106,25 @@ class MACBFGNN(Algorithm):
 
         # hyperparams
         if params is None:
-            self.params = {  #TODO: tune this
-                'alpha': 0.5,
+            self.params = {  # default hyper-parameters
+                'alpha': 1.0,
                 'eps': 0.02,
                 'inner_iter': 10,
-                'loss_action_coef': 0.1,
-                'loss_unsafe_coef': 10.,
-                'loss_safe_coef': 10.,
-                'loss_h_dot_coef': 50.
+                'loss_action_coef': 0.001,
+                'loss_unsafe_coef': 1.,
+                'loss_safe_coef': 1.,
+                'loss_h_dot_coef': 0.1
             }
         else:
             self.params = params
 
+    @torch.no_grad()
     def act(self, data: Data) -> Tensor:
-        with torch.no_grad():
-            return self.actor(data)
-        # return self.act_strict(data)
+        # with torch.no_grad():
+        #     return self.actor(data)
+        return self.actor(data)
 
+    @torch.no_grad()
     def step(self, data: Data) -> Tensor:
         action = self.actor(data)
         is_safe = True
@@ -157,25 +146,26 @@ class MACBFGNN(Algorithm):
         for i_inner in range(self.params['inner_iter']):
             # sample from the current buffer and the memory
             if self.memory.size == 0:
-                graphs = Batch.from_data_list(self.buffer.sample(self.batch_size // 5, seg_len))
-                
+                graph_list = self.buffer.sample(self.batch_size // 5, seg_len)
             else:
                 curr_graphs = self.buffer.sample(self.batch_size // 10, seg_len, True)
                 prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10, seg_len, True)
-                graphs = Batch.from_data_list(curr_graphs + prev_graphs)
+                graph_list = curr_graphs + prev_graphs
 
             # get CBF values and the control inputs
+            graphs = Batch.from_data_list(graph_list)
             h = self.cbf(graphs)
             actions = self.actor(graphs)
 
             # calculate loss
             eps = self.params['eps']
+
             # unsafe region h(x) < 0
             unsafe_mask = self._env.unsafe_mask(graphs)
             h_unsafe = h[unsafe_mask]
             if h_unsafe.numel():
                 max_val_unsafe = torch.relu(h_unsafe + eps)
-                loss_unsafe = torch.mean(max_val_unsafe)  # use square loss for robustness
+                loss_unsafe = torch.mean(max_val_unsafe)
                 acc_unsafe = torch.mean(torch.less(h_unsafe, 0).type_as(h_unsafe))
                 
             else:
@@ -187,7 +177,7 @@ class MACBFGNN(Algorithm):
             h_safe = h[safe_mask]
             if h_safe.numel():
                 max_val_safe = torch.relu(-h_safe + eps)
-                loss_safe = torch.mean(max_val_safe)  # use square loss for robustness
+                loss_safe = torch.mean(max_val_safe)
                 acc_safe = torch.mean(torch.greater_equal(h_safe, 0).type_as(h_safe))
                 
             else:
@@ -195,12 +185,21 @@ class MACBFGNN(Algorithm):
                 acc_safe = torch.tensor(1.0).type_as(h_unsafe)
                 
             # derivative loss h_dot + \alpha h > 0
-            graphs_next = self._env.forward_graph(graphs, actions)  # todo: change edge attr
+            graphs_next = self._env.forward_graph(graphs, actions)
             h_next = self.cbf(graphs_next)
+            graphs_next_new_link = []
+            for i_graph, this_graph in enumerate(graph_list):
+                this_graph_next = self._env.forward_graph(this_graph, actions[i_graph * self.num_agents: (i_graph + 1) * self.num_agents])
+                graphs_next_new_link.append(self._env.add_communication_links(this_graph_next))
+            graphs_next_new_link = Batch.from_data_list(graphs_next_new_link)
+
+            h_next_new_link = self.cbf(graphs_next_new_link)
             h_dot = (h_next - h) / self._env.dt
+            h_dot_new_link = (h_next_new_link - h) / self._env.dt
+            residue = (h_dot_new_link - h_dot).clone().detach()
+            h_dot = residue + h_dot
             max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + eps)
-            # loss_h_dot = torch.sum(max_val_h_dot) / torch.sum(torch.greater_equal(h_dot, 0).type_as(h_dot))
-            loss_h_dot = torch.mean(max_val_h_dot)  # use square loss for robustness
+            loss_h_dot = torch.mean(max_val_h_dot)
             acc_h_dot = torch.mean(torch.greater_equal(h_dot + self.params['alpha'] * h, 0).type_as(h_dot))
             # action loss
             loss_action = torch.mean(torch.square(actions).sum(dim=1))
@@ -210,8 +209,8 @@ class MACBFGNN(Algorithm):
                    self.params['loss_safe_coef'] * loss_safe + \
                    self.params['loss_h_dot_coef'] * loss_h_dot + \
                    self.params['loss_action_coef'] * loss_action
-            self.optim_cbf.zero_grad()
-            self.optim_actor.zero_grad()
+            self.optim_cbf.zero_grad(set_to_none=True)
+            self.optim_actor.zero_grad(set_to_none=True)
             loss.backward()
             self.optim_cbf.step()
             self.optim_actor.step()
@@ -240,7 +239,6 @@ class MACBFGNN(Algorithm):
     def save(self, save_dir: str):
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
-            
         torch.save(self.cbf.state_dict(), os.path.join(save_dir, 'cbf.pkl'))
         torch.save(self.actor.state_dict(), os.path.join(save_dir, 'actor.pkl'))
 
@@ -250,118 +248,56 @@ class MACBFGNN(Algorithm):
         self.actor.load_state_dict(torch.load(os.path.join(load_dir, 'actor.pkl'), map_location=self.device))
 
     def apply(self, data: Data) -> Tensor:
-        # set up variable and constraints
-        action = cp.Variable((data.states.shape[0], self.action_dim))
-        relaxation = cp.Variable(1, nonneg=True)
-        obj = cp.Minimize(cp.sum_squares(action) + cp.multiply(1e4, relaxation))
-        constraints = []
+        margins = np.zeros(data.states.shape[0])
 
-        # calculate Jacobian of h
+        # calculate the Jacobian of h
         data.edge_attr.requires_grad = True
         h = self.cbf(data)
         Jh = []
         for i in range(h.shape[0]):
             Jh.append(torch.autograd.grad(h[i], data.edge_attr, create_graph=True, retain_graph=True)[0].unsqueeze(0))
         Jh = torch.cat(Jh, dim=0).cpu().detach().numpy().reshape(h.shape[0], -1)
-        h = h.cpu().detach().numpy()
+        h_np = h.cpu().detach().numpy()
 
-        # calculate h_dot
-        # for i in range(self.num_agents):
-        #     action =
-        edge_dot = self._env.edge_dynamics(data, action)
-        edge_dot = cp.reshape(edge_dot, (1, edge_dot.shape[0] * edge_dot.shape[1]), order='C')
-        for i in range(h.shape[0]):
-            constraints.append(cp.scalar_product(Jh[i], edge_dot) + self.params['alpha'] * h[i] >= -relaxation)
+        i_iter = 0
+        while True:
+            # set up variable and constraints
+            action = cp.Variable((data.states.shape[0], self.action_dim))
+            relaxation = cp.Variable(1, nonneg=True)
+            obj = cp.Minimize(cp.sum_squares(action) + cp.multiply(1e4, relaxation))
+            constraints = []
 
-        # action limit
-        low, high = self._env.action_lim
-        constraints.append(action >= np.repeat(low.unsqueeze(0).cpu().numpy(), self.num_agents, axis=0))
-        constraints.append(action <= np.repeat(high.unsqueeze(0).cpu().numpy(), self.num_agents, axis=0))
+            # calculate h_dot using linearization
+            edge_dot = self._env.edge_dynamics(data, action)
+            edge_dot = cp.reshape(edge_dot, (1, edge_dot.shape[0] * edge_dot.shape[1]), order='C')
+            for i in range(h.shape[0]):
+                constraints.append(
+                    cp.scalar_product(Jh[i], edge_dot) + self.params['alpha'] * h_np[i] + relaxation >= margins[i])
 
-        # solve problem
-        # constraints = [h_dot + self.params['alpha'] * h.squeeze().cpu().detach().numpy() >= 0]
-        prob = cp.Problem(obj, constraints)
-        results = prob.solve(solver='SCS')
-        action = action.value
-        # if relaxation.value > 0:
-        #     print(f'relaxation: {relaxation.value}')
+            # action limit
+            low, high = self._env.action_lim
+            constraints.append(action >= np.repeat(low.unsqueeze(0).cpu().numpy(), self.num_agents, axis=0))
+            constraints.append(action <= np.repeat(high.unsqueeze(0).cpu().numpy(), self.num_agents, axis=0))
 
-        return torch.from_numpy(action).type_as(data.x)
+            # solve problem
+            prob = cp.Problem(obj, constraints)
+            results = prob.solve(solver='SCS')
+            action = torch.from_numpy(action.value).type_as(data.x)
 
+            # simulate the environment to check CBF conditions
+            graphs_next = self._env.forward_graph(data, action)
+            graphs_next = self._env.add_communication_links(graphs_next)
+            h_next = self.cbf(graphs_next)
+            h_dot = (h_next - h) / self._env.dt
+            val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h)
+            val_agent = torch.nonzero(val_h_dot.squeeze(-1))
+            max_val_h_dot = torch.mean(val_h_dot)
 
-        # with torch.no_grad():
-        #     h = self.cbf(data)
-        # # with torch.no_grad():
-        # #     action = self.actor(data)
-        # # action = torch.zeros_like(action, requires_grad=True)
-        # # learned_action = False
-        # i_iter = 0
-        # # optim = None
-        # optim = []
-        # action = []
-        # for i in range(self.num_agents):
-        #     action.append(torch.zeros(1, self.action_dim, dtype=torch.float, device=self.device, requires_grad=True))
-        #     optim.append(Adam((action[-1],), lr=0.1))
-        # # action_tensor = torch.cat(action, dim=0)
-        # # optim = Adam((action,), lr=0.1)
-        # while True:
-        #     action_tensor = torch.cat(action, dim=0)
-        #     action_ref = self._env.u_ref(data)
-        #     graphs_next = self._env.forward_graph(data, action_tensor)
-        #     h_next = self.cbf(graphs_next)
-        #     h_dot = (h_next - h) / self._env.dt
-        #     val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h)
-        #     val_agent = torch.nonzero(val_h_dot.squeeze(-1))
-        #     max_val_h_dot = torch.mean(val_h_dot)
-        #     if max_val_h_dot <= 0 or i_iter >= 10000:
-        #         break
-        #     else:
-        #         # if learned_action is False:
-        #         #     with torch.no_grad():
-        #         #         action = self.actor(data)
-        #         #     action.requires_grad = True
-        #         #     optim = Adam((action,), lr=0.1)
-        #         #     learned_action = True
-        #         # else:
-        #         #     optim.zero_grad()
-        #         #     max_val_h_dot.backward()
-        #         #     optim.step()
-        #         #     i_iter += 1
-        #         for i in val_agent[0]:
-        #             optim[i].zero_grad()
-        #         max_val_h_dot.backward()
-        #         for i in val_agent[0]:
-        #             # action[i].grad += 10 * torch.randn_like(action[i]) * action[i].grad
-        #             true_action = action[i] + action_ref[i, :]
-        #             if torch.dot(true_action.squeeze(), action[i].grad.squeeze()) / (torch.norm(true_action) * torch.norm(action[i].grad) + 1e-8) > 0.9:
-        #                 if action[i].grad.ndim == 2:
-        #                     action[i].grad = torch.tensor([action[i].grad[0, 1], -action[i].grad[0, 0]]).type_as(action[i]).view(action[i].grad.shape)
-        #                 else:
-        #                     rand_vec = torch.randn_like(action[i])
-        #                     if torch.dot(rand_vec, action[i].grad) == 0:
-        #                         rand_vec = torch.randn_like(action[i])
-        #                     new_grad = torch.cross(action[i].grad, rand_vec)
-        #                     new_grad = new_grad / torch.norm(new_grad) * torch.norm(action[i].grad)
-        #                     action[i].grad = new_grad
-        #             optim[i].step()
-        #         i_iter += 1
-        #
-        # # print(i_iter)
-        # return torch.cat(action, dim=0)
+            if max_val_h_dot <= 0 or i_iter >= 500:
+                break
+            else:
+                for i in val_agent.squeeze(-1):
+                    margins[i] += 0.02  # increase margin and solve again
+                i_iter += 1
 
-        # h = self.cbf(data)
-        # actions = []
-        # for i_node in range(self.num_agents):
-        #     action = cp.Variable(self.action_dim)
-        #     obj = cp.Minimize(cp.sum_squares(action))
-        #     graph_next = self._env.forward_agent(data, action, i_node)
-        #     h_next = self.cbf(graph_next)
-        #     h_dot = (h_next - h) / self._env.dt
-        #     max_val_h_dot = torch.mean(torch.relu(-h_dot - self.params['alpha'] * h))
-        #     constraints = [max_val_h_dot <= 0]
-        #     prob = cp.Problem(obj, constraints)
-        #     result = prob.solve()
-        #     actions.append(torch.tensor(action.value).type_as(data.states))
-        # return torch.cat(actions)
-        # actions = cp.Variable(self.action_dim * self.num_agents)
-        # obj =
+        return action

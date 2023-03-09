@@ -1,6 +1,5 @@
 opencv-python==4.7.0.68
 numpy==1.23.4
-multiprocess==0.70.14
 scipy==1.9.3
 networkx==3.0
 matplotlib==3.6.3

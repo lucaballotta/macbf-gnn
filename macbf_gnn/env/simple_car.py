@@ -1,15 +1,13 @@
-import cvxpy.atoms.affine.add_expr
 import numpy as np
 import torch
-import networkx as nx
 import matplotlib.pyplot as plt
 
 from typing import Tuple, Optional, Union
 from torch import Tensor
 from torch_geometric.data import Data
 from torch_geometric.transforms.radius_graph import RadiusGraph
-from torch_geometric.utils import to_networkx, mask_to_index
-from cvxpy import Variable, Expression
+from torch_geometric.utils import mask_to_index
+from cvxpy import Expression
 
 from .utils import lqr, plot_graph
 from .base import MultiAgentEnv
@@ -17,7 +15,7 @@ from .base import MultiAgentEnv
 
 class SimpleCar(MultiAgentEnv):
 
-    def __init__(self, num_agents: int, device: torch.device, dt: float = 0.01, params: dict = None):
+    def __init__(self, num_agents: int, device: torch.device, dt: float = 0.03, params: dict = None):
         super(SimpleCar, self).__init__(num_agents, device, dt, params)
 
         # builder of the graph
@@ -69,15 +67,6 @@ class SimpleCar(MultiAgentEnv):
             B = np.array([[1, 0], [0, 1], [0, 0], [0, 0]])
             xdot = x @ A.T + u @ B.T
             return xdot
-            # if not isinstance(u, Tensor):
-            #     x = x.cpu().detach().numpy()
-            #     A = np.zeros((self.state_dim, self.state_dim))
-            #     A[0, 2] = 1.
-            #     A[1, 3] = 1.
-            #     B = np.array([[1, 0], [0, 1], [0, 0], [0, 0]])
-            #     xdot = A @ x + B @ u
-            #     return xdot
-            # return torch.cat([x[2:], u], dim=0)
         else:
             return torch.cat([x[:, 2:], u], dim=1)
 
@@ -88,7 +77,7 @@ class SimpleCar(MultiAgentEnv):
         states = torch.zeros(self.num_agents, 2, device=self.device)
         goals = torch.zeros(self.num_agents, 2, device=self.device)
 
-        if self._mode == 'train':
+        if self._mode == 'train' or self._mode == 'test':
             # randomly generate positions of agents
             i = 0
             while i < self.num_agents:
@@ -109,13 +98,16 @@ class SimpleCar(MultiAgentEnv):
                     continue
                 goals[i] = candidate
                 i += 1
-        else:
+        elif self._mode == 'demo':
             for i in range(self.num_agents // 2):
                 states[i] = torch.tensor([i * self._params['car_radius'] * 10, 0], device=self.device)
-                states[i + self.num_agents // 2] = torch.tensor([i * self._params['car_radius'] * 10 + self._params['car_radius'],
-                                                                 self._params['car_radius'] * 20], device=self.device)
+                states[i + self.num_agents // 2] = torch.tensor(
+                    [i * self._params['car_radius'] * 10 + self._params['car_radius'],
+                     self._params['car_radius'] * 20], device=self.device)
                 goals[i] = states[i + self.num_agents // 2] - self._params['car_radius']
                 goals[i + self.num_agents // 2] = states[i] + self._params['car_radius']
+        else:
+            raise ValueError('Reset environment: unknown type of mode!')
 
         # add velocity
         states = torch.cat([states, torch.zeros(self.num_agents, 2, device=self.device)], dim=1)
@@ -181,38 +173,6 @@ class SimpleCar(MultiAgentEnv):
 
         return data_next
 
-    def edge_dynamics(self, data: Data, action: Variable) -> Expression:
-        with torch.no_grad():
-            action = action + self.u_ref(data).cpu().numpy()
-        state_dot = self.dynamics(data.states, action)
-        edge_index = data.edge_index.cpu().numpy()
-        edge_dot = state_dot[edge_index[0]] - state_dot[edge_index[1]]
-        return edge_dot
-
-    def forward_agent(self, data: Data, action: Tensor, agent: int) -> Data:
-        # calculate next state using dynamics
-        state_index = [agent * self.state_dim + i for i in range(self.state_dim)]
-        action_index = [agent * self.action_dim + i for i in range(self.action_dim)]
-        action = action + self.u_ref(data)[agent, :]
-        # lower_lim, upper_lim = self.action_lim
-        # action = torch.clamp(action, lower_lim[action_index], upper_lim[action_index])
-        state = data.states
-        state[state_index] = self.forward(data.states[agent, :], action)
-        # state = self.forward(data.states[state_index], action)
-        # new_states = data.states
-        # new_states[state_index] = state
-
-        # construct the graph of the next step, retaining the connection
-        data_next = Data(
-            x=torch.zeros_like(state),
-            edge_index=data.edge_index,
-            edge_attr=state[data.edge_index[0]] - state[data.edge_index[1]],
-            pos=state[:, :2],
-            states=state
-        )
-
-        return data_next
-
     def render(
             self, traj: Optional[Tuple[Data, ...]] = None, return_ax: bool = False, plot_edge: bool = True
     ) -> Union[Tuple[np.array, ...], np.array]:
@@ -243,9 +203,10 @@ class SimpleCar(MultiAgentEnv):
             collision_text.set_text(f'Collision: {unsafe_index.cpu().detach().numpy()}')
 
             # set axis limit
-            ax.set_xlim(self._xy_min[0], self._xy_max[0])
-            ax.set_ylim(self._xy_min[1], self._xy_max[1])
-            plt.axis('equal')
+            x_interval = self._xy_max[0] - self._xy_min[0]
+            y_interval = self._xy_max[1] - self._xy_min[1]
+            ax.set_xlim(self._xy_min[0], self._xy_min[0] + max(x_interval, y_interval))
+            ax.set_ylim(self._xy_min[1], self._xy_min[1] + max(x_interval, y_interval))
             plt.axis('off')
 
             if return_ax:
@@ -274,20 +235,9 @@ class SimpleCar(MultiAgentEnv):
         high_lim = torch.tensor([self._xy_max[0], self._xy_max[1], 10, 10], device=self.device)
         return low_lim, high_lim
 
-    # @property
-    # def node_lim(self) -> Tuple[Tensor, Tensor]:
-    #     return (
-    #         torch.zeros(4),
-    #         torch.zeros(4)
-    #     )
-    #
-    # @property
-    # def edge_lim(self) -> Tuple[Tensor, Tensor]:
-    #     pass
-
     @property
     def action_lim(self) -> Tuple[Tensor, Tensor]:
-        upper_limit = torch.ones(2, device=self.device) * 1000000.0
+        upper_limit = torch.ones(2, device=self.device) * 10.
         lower_limit = - upper_limit
         return lower_limit, upper_limit
 
@@ -323,7 +273,7 @@ class SimpleCar(MultiAgentEnv):
             pos_diff = state_diff[:, :, :2]
             dist = pos_diff.norm(dim=2)
             dist += torch.eye(dist.shape[0], device=self.device) * (2 * self._params['car_radius'] + 1)
-            safe = torch.greater(dist, 2 * self._params['car_radius'])  # 3 is a hyperparameter
+            safe = torch.greater(dist, 3 * self._params['car_radius'])  # 3 is a hyperparameter
             mask[self.num_agents * i: self.num_agents * (i + 1)] = torch.min(safe, dim=1)[0]
         mask = mask.bool()
 
