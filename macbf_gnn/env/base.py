@@ -1,11 +1,13 @@
 import numpy as np
 import torch
+import copy
 
 from abc import ABC, abstractmethod, abstractproperty
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, List
 from torch import Tensor
 from torch_geometric.data import Data
 from cvxpy import Variable, Expression
+from collections import deque
 
 
 class MultiAgentEnv(ABC):
@@ -346,3 +348,69 @@ class MultiAgentEnv(ABC):
         """
         xdot = self.dynamics(x, u)
         return x + xdot * self.dt
+
+
+class Agent(ABC):
+    
+    def __init__(self, buffer_size: int=100):
+        super(Agent, self).__init__()
+        self.buffer_size = buffer_size
+        self._neighbors = deque(maxlen = self.buffer_size)
+        self._delays = deque(maxlen = self.buffer_size)
+        self._neighbor_data = dict()
+        
+        
+    @property
+    def neighbor_data(self):
+        return self._neighbor_data
+    
+    
+    def reset(self):
+        self._neighbors.clear()
+        self._delays.clear()
+        self._neighbor_data.clear()
+    
+    
+    def copy(self):
+        return copy.deepcopy(self)
+    
+    
+    def store_delay(self, delay: int):
+        """
+        Store communication delay for transmission started at current time.
+        Parameters
+        ----------
+        delay: int,
+            communication delay
+        """
+        self._delays.append(delay)
+        
+        
+    def store_neighbors(self, neighbors: List[int]):
+        """
+        Store agents to which data are transmitted at current time.
+        Parameters
+        ----------
+        neighbors: List[int],
+            indices of neighbors
+        """
+        self._neighbors.append(neighbors)
+        
+        
+    @abstractmethod
+    def store_data(self, neighbor: int, data: Tensor) -> bool:
+        """
+        Store data that have been received from neighbors at the current time step.
+        Parameters
+        ----------
+        neighbor: int,
+            index of the neighbor
+        data: Tensor (state_dim),
+            data received from the neighbor
+            
+        Returns
+        -------
+        data_stored: bool,
+            True if data can be stored, False otherwise
+        """
+        pass

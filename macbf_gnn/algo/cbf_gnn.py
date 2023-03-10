@@ -36,6 +36,7 @@ class CBFGNN(nn.Module):
         ])
         self.feat_2_CBF = MLP(in_channels=64, out_channels=1, hidden_layers=(64, 64))
 
+
     def forward(self, data: Data) -> Tensor:
         """
         Get the CBF value for the input states.
@@ -118,15 +119,21 @@ class MACBFGNN(Algorithm):
         else:
             self.params = params
 
+
     @torch.no_grad()
     def act(self, data: Data) -> Tensor:
         # with torch.no_grad():
         #     return self.actor(data)
         return self.actor(data)
 
+
     @torch.no_grad()
     def step(self, data: Data) -> Tensor:
-        action = self.actor(data)
+        if data.edge_attr.numel():
+            action = self.actor(data)
+        else:
+            action = 0
+            
         is_safe = True
         if torch.any(self._env.unsafe_mask(data)):
             is_safe = not is_safe
@@ -135,23 +142,26 @@ class MACBFGNN(Algorithm):
         
         return action
 
+
     def is_update(self, step: int) -> bool:
         return step % self.batch_size == 0
 
+
     def update(self, step: int, writer: SummaryWriter = None) -> dict:
-        seg_len = 3  # pls use odd number
         acc_safe = torch.zeros(1, dtype=torch.float)
         acc_unsafe = torch.zeros(1, dtype=torch.float)
         acc_h_dot = torch.zeros(1, dtype=torch.float)
         for i_inner in range(self.params['inner_iter']):
+            
             # sample from the current buffer and the memory
             if self.memory.size == 0:
-                graph_list = self.buffer.sample(self.batch_size // 5, seg_len)
+                graph_list = self.buffer.sample(self.batch_size // 5)
+                
             else:
-                curr_graphs = self.buffer.sample(self.batch_size // 10, seg_len, True)
-                prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10, seg_len, True)
+                curr_graphs = self.buffer.sample(self.batch_size // 10, True)
+                prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10, True)
                 graph_list = curr_graphs + prev_graphs
-
+                
             # get CBF values and the control inputs
             graphs = Batch.from_data_list(graph_list)
             h = self.cbf(graphs)
@@ -187,13 +197,13 @@ class MACBFGNN(Algorithm):
             # derivative loss h_dot + \alpha h > 0
             graphs_next = self._env.forward_graph(graphs, actions)
             h_next = self.cbf(graphs_next)
-            graphs_next_new_link = []
+            graphs_next = []
             for i_graph, this_graph in enumerate(graph_list):
                 this_graph_next = self._env.forward_graph(this_graph, actions[i_graph * self.num_agents: (i_graph + 1) * self.num_agents])
-                graphs_next_new_link.append(self._env.add_communication_links(this_graph_next))
-            graphs_next_new_link = Batch.from_data_list(graphs_next_new_link)
-
-            h_next_new_link = self.cbf(graphs_next_new_link)
+                graphs_next.append(this_graph_next)
+                
+            graphs_next = Batch.from_data_list(graphs_next)
+            h_next_new_link = self.cbf(graphs_next)
             h_dot = (h_next - h) / self._env.dt
             h_dot_new_link = (h_next_new_link - h) / self._env.dt
             residue = (h_dot_new_link - h_dot).clone().detach()
@@ -201,6 +211,7 @@ class MACBFGNN(Algorithm):
             max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + eps)
             loss_h_dot = torch.mean(max_val_h_dot)
             acc_h_dot = torch.mean(torch.greater_equal(h_dot + self.params['alpha'] * h, 0).type_as(h_dot))
+            
             # action loss
             loss_action = torch.mean(torch.square(actions).sum(dim=1))
 
@@ -236,16 +247,19 @@ class MACBFGNN(Algorithm):
             'acc/derivative': acc_h_dot.item()
         }
         
+        
     def save(self, save_dir: str):
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
         torch.save(self.cbf.state_dict(), os.path.join(save_dir, 'cbf.pkl'))
         torch.save(self.actor.state_dict(), os.path.join(save_dir, 'actor.pkl'))
 
+
     def load(self, load_dir: str):
         assert os.path.exists(load_dir)
         self.cbf.load_state_dict(torch.load(os.path.join(load_dir, 'cbf.pkl'), map_location=self.device))
         self.actor.load_state_dict(torch.load(os.path.join(load_dir, 'actor.pkl'), map_location=self.device))
+
 
     def apply(self, data: Data) -> Tensor:
         margins = np.zeros(data.states.shape[0])

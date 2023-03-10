@@ -8,16 +8,26 @@ from torch_geometric.data import Data
 from torch_geometric.transforms.radius_graph import RadiusGraph
 from torch_geometric.utils import mask_to_index
 from cvxpy import Expression
+from collections import deque
+from copy import deepcopy
+from scipy.stats import poisson
 
 from .utils import lqr, plot_graph
-from .base import MultiAgentEnv
+from .base import Agent, MultiAgentEnv
 
 
-class SimpleCar(MultiAgentEnv):
+class SimpleCars(MultiAgentEnv):
 
     def __init__(self, num_agents: int, device: torch.device, dt: float = 0.03, params: dict = None):
-        super(SimpleCar, self).__init__(num_agents, device, dt, params)
+        super(SimpleCars, self).__init__(num_agents, device, dt, params)
 
+        # state trajectory
+        self._states = deque(maxlen=self._params['buffer_size'])
+        
+        # cars
+        car = SimpleCar(buffer_size=self._params['buffer_size'])
+        self._cars = [car.copy() for _ in range(self.num_agents)]
+        
         # builder of the graph
         self._builder = RadiusGraph(self._params['comm_radius'], max_num_neighbors=self.num_agents)
 
@@ -29,25 +39,31 @@ class SimpleCar(MultiAgentEnv):
         self._xy_min = None
         self._xy_max = None
 
+
     @property
     def state_dim(self) -> int:
         return 4
+
 
     @property
     def node_dim(self) -> int:
         return 4
 
+
     @property
     def edge_dim(self) -> int:
         return 4
+
 
     @property
     def action_dim(self) -> int:
         return 2
 
+
     @property
     def max_episode_steps(self) -> int:
         return 500
+
 
     @property
     def default_params(self) -> dict:
@@ -55,9 +71,12 @@ class SimpleCar(MultiAgentEnv):
             'm': 1.0,  # mass of the car
             'comm_radius': 1.0,  # communication radius
             'car_radius': 0.05,  # radius of the cars
-            'dist2goal': 0.05  # goal reaching threshold
+            'dist2goal': 0.05,  # goal reaching threshold
+            'buffer_size': 100,  # buffer for received messages
+            'poisson_coeff': 3  # coefficient to generate transmission delays
         }
-
+        
+        
     def dynamics(self, x: Tensor, u: Union[Tensor, Expression]) -> Union[Tensor, Expression]:
         if isinstance(u, Expression):
             x = x.cpu().detach().numpy()
@@ -69,7 +88,8 @@ class SimpleCar(MultiAgentEnv):
             return xdot
         else:
             return torch.cat([x[:, 2:], u], dim=1)
-
+        
+        
     def reset(self) -> Data:
         self._t = 0
         # side_length = np.sqrt(max(1.0, self.num_agents / 8.0))
@@ -114,11 +134,19 @@ class SimpleCar(MultiAgentEnv):
 
         # record goals
         self._goal = goals
+        
+        # store states
+        self._states.append(states)
 
         # build graph
         data = Data(x=torch.zeros_like(states), pos=states[:, :2], states=states)
-        data = self.add_communication_links(data)
-        self._data = data
+        neigh_sizes = self.add_communication_links(data)
+        
+        # simulate transmission of delayed data among cars
+        self.transmit_data(neigh_sizes)
+        
+        # store current edge attributes with received delayed data
+        self._data = self.add_edge_attributes(data)
 
         # set parameters for plotting
         points = torch.cat([states[:, :2], goals], dim=0).cpu().detach().numpy()
@@ -129,7 +157,8 @@ class SimpleCar(MultiAgentEnv):
         self._xy_max = xy_max + 0.5 * (max_interval - (xy_max - xy_min))
 
         return data
-
+    
+    
     def step(self, action: Tensor) -> Tuple[Data, float, bool, dict]:
         self._t += 1
 
@@ -139,10 +168,17 @@ class SimpleCar(MultiAgentEnv):
         action = torch.clamp(action, lower_lim, upper_lim)
         with torch.no_grad():
             state = self.forward(self.state, action)
+            self._states.append(state)
 
         # construct graph using the new states
         data = Data(x=torch.zeros_like(state), pos=state[:, :2], states=state)
-        self._data = self.add_communication_links(data)
+        neigh_sizes = self.add_communication_links(data)
+        
+        # simulate transmission of delayed data among cars
+        self.transmit_data(neigh_sizes)
+        
+        # store current edge attributes with received delayed data
+        self._data = self.add_edge_attributes(data)
 
         # the episode ends when reaching max_episode_steps or all the agents reach the goal
         time_up = self._t >= self.max_episode_steps
@@ -154,25 +190,45 @@ class SimpleCar(MultiAgentEnv):
 
         safe = self.unsafe_mask(data).sum() == 0
         return self.data, float(reward), done, {'safe': safe}
-
+    
+    
+    def transmit_data(self, neigh_sizes):
+        
+        # transmit data with delays
+        for car_idx, car in enumerate(self._cars):
+            avg_del = neigh_sizes[car_idx] * self._params['poisson_coeff']
+            delay_tx = poisson.rvs(avg_del)
+            car.store_delay(delay_tx)
+            
+        # store received data
+        for idx_car, car in enumerate(self._cars):
+            neighbors_list, delay_list = car.data_delivered()
+            for idx_neighbors, neighbors in enumerate(neighbors_list):
+                delay_rec = delay_list[idx_neighbors]
+                for neighbor in neighbors:
+                    state_diff = self._states[-delay_rec - 1][idx_car] - self._states[-delay_rec - 1][neighbor]
+                    self._cars[neighbor].store_data(idx_car, state_diff)
+                    
+                    
     def forward_graph(self, data: Data, action: Tensor) -> Data:
+        
         # calculate next state using dynamics
         action = action + self.u_ref(data)
         lower_lim, upper_lim = self.action_lim
         action = torch.clamp(action, lower_lim, upper_lim)
-        state = self.forward(data.states, action)
+        states_next = self.forward(data.states, action)
 
         # construct the graph of the next step, retaining the connection
         data_next = Data(
-            x=torch.zeros_like(state),
+            x=torch.zeros_like(states_next),
+            pos=states_next[:, :2],
+            states=states_next,
             edge_index=data.edge_index,
-            edge_attr=state[data.edge_index[0]] - state[data.edge_index[1]],
-            pos=state[:, :2],
-            states=state
-        )
+            edge_attr=data.edge_attr)
 
         return data_next
-
+    
+    
     def render(
             self, traj: Optional[Tuple[Data, ...]] = None, return_ax: bool = False, plot_edge: bool = True
     ) -> Union[Tuple[np.array, ...], np.array]:
@@ -223,24 +279,52 @@ class SimpleCar(MultiAgentEnv):
             return tuple(gif)
         else:
             return gif[0]
-
-    def add_communication_links(self, data: Data) -> Data:
+        
+        
+    def add_communication_links(self, data: Data) -> list:
         data = self._builder(data)
-        data.edge_attr = data.states[data.edge_index[0]] - data.states[data.edge_index[1]]
+        edge_index_curr = data.edge_index
+        neigh_sizes = [0] * self.num_agents
+        for car_idx, car in enumerate(self._cars):
+            neighbors = edge_index_curr[0][edge_index_curr[1] == car_idx].tolist()
+            car.store_neighbors(neighbors)
+            neigh_sizes[car_idx] = len(neighbors)
+            
+        return neigh_sizes
+    
+    
+    def add_edge_attributes(self, data: Data) -> Data:
+        edge_index = [[], []]
+        edge_attr = []
+        for car_idx, car in enumerate(self._cars):
+            for neighbor in car.neighbor_data:
+                edge_index[1].append(car_idx)
+                edge_index[0].append(neighbor)
+                edge_attr.append(car.neighbor_data[neighbor])
+                
+        data.edge_index = torch.tensor(edge_index, dtype=torch.long)
+        if len(edge_attr):
+            data.edge_attr = torch.stack(edge_attr)
+        else:
+            data.edge_attr = torch.tensor(edge_attr)
+            
         return data
+
 
     @property
     def state_lim(self) -> Tuple[Tensor, Tensor]:
         low_lim = torch.tensor([self._xy_min[0], self._xy_min[1], -10, -10], device=self.device)
         high_lim = torch.tensor([self._xy_max[0], self._xy_max[1], 10, 10], device=self.device)
         return low_lim, high_lim
-
+    
+    
     @property
     def action_lim(self) -> Tuple[Tensor, Tensor]:
         upper_limit = torch.ones(2, device=self.device) * 10.
         lower_limit = - upper_limit
         return lower_limit, upper_limit
-
+    
+    
     def u_ref(self, data: Data) -> Tensor:
         goal = torch.cat([self._goal, torch.zeros_like(self._goal)], dim=1)
         states = data.states.reshape(-1, self.num_agents, self.state_dim)
@@ -264,7 +348,8 @@ class SimpleCar(MultiAgentEnv):
         # feedback control
         action = - torch.einsum('us,bns->bnu', self._K, diff)
         return action.reshape(-1, self.action_dim)
-
+    
+    
     def safe_mask(self, data: Data) -> Tensor:
         mask = torch.empty(data.states.shape[0])
         for i in range(data.states.shape[0] // self.num_agents):
@@ -278,7 +363,8 @@ class SimpleCar(MultiAgentEnv):
         mask = mask.bool()
 
         return mask
-
+    
+    
     def unsafe_mask(self, data: Data) -> Tensor:
         mask = torch.empty(data.states.shape[0])
         for i in range(data.states.shape[0] // self.num_agents):
@@ -292,3 +378,25 @@ class SimpleCar(MultiAgentEnv):
         mask = mask.bool()
         
         return mask
+
+
+class SimpleCar(Agent):
+    
+    def __init__(self, buffer_size):
+        super().__init__(buffer_size)
+        
+        
+    def store_data(self, neighbor: int, data: Tensor):
+        data = torch.reshape(data, (-1,))
+        self._neighbor_data[neighbor] = data        
+    
+    
+    def data_delivered(self):
+        neighbors = []
+        delays = []
+        for idx, delay in enumerate(self._delays):
+            if delay == len(self._delays) - 1 - idx:
+                neighbors.append(self._neighbors[idx])
+                delays.append(delay)
+                
+        return neighbors, delays
