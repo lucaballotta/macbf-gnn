@@ -262,56 +262,57 @@ class MACBFGNN(Algorithm):
 
 
     def apply(self, data: Data) -> Tensor:
-        margins = np.zeros(data.states.shape[0])
+        action = 0
+        if len(data.edge_attr):
+            margins = np.zeros(data.states.shape[0])
 
-        # calculate the Jacobian of h
-        data.edge_attr.requires_grad = True
-        h = self.cbf(data)
-        Jh = []
-        for i in range(h.shape[0]):
-            Jh.append(torch.autograd.grad(h[i], data.edge_attr, create_graph=True, retain_graph=True)[0].unsqueeze(0))
-        Jh = torch.cat(Jh, dim=0).cpu().detach().numpy().reshape(h.shape[0], -1)
-        h_np = h.cpu().detach().numpy()
-
-        i_iter = 0
-        while True:
-            # set up variable and constraints
-            action = cp.Variable((data.states.shape[0], self.action_dim))
-            relaxation = cp.Variable(1, nonneg=True)
-            obj = cp.Minimize(cp.sum_squares(action) + cp.multiply(1e4, relaxation))
-            constraints = []
-
-            # calculate h_dot using linearization
-            edge_dot = self._env.edge_dynamics(data, action)
-            edge_dot = cp.reshape(edge_dot, (1, edge_dot.shape[0] * edge_dot.shape[1]), order='C')
+            # calculate the Jacobian of h
+            data.edge_attr.requires_grad = True
+            h = self.cbf(data)
+            Jh = []
             for i in range(h.shape[0]):
-                constraints.append(
-                    cp.scalar_product(Jh[i], edge_dot) + self.params['alpha'] * h_np[i] + relaxation >= margins[i])
+                Jh.append(torch.autograd.grad(h[i], data.edge_attr, create_graph=True, retain_graph=True)[0].unsqueeze(0))
+            Jh = torch.cat(Jh, dim=0).cpu().detach().numpy().reshape(h.shape[0], -1)
+            h_np = h.cpu().detach().numpy()
 
-            # action limit
-            low, high = self._env.action_lim
-            constraints.append(action >= np.repeat(low.unsqueeze(0).cpu().numpy(), self.num_agents, axis=0))
-            constraints.append(action <= np.repeat(high.unsqueeze(0).cpu().numpy(), self.num_agents, axis=0))
+            i_iter = 0
+            while True:
+                # set up variable and constraints
+                action = cp.Variable((data.states.shape[0], self.action_dim))
+                relaxation = cp.Variable(1, nonneg=True)
+                obj = cp.Minimize(cp.sum_squares(action) + cp.multiply(1e4, relaxation))
+                constraints = []
 
-            # solve problem
-            prob = cp.Problem(obj, constraints)
-            results = prob.solve(solver='SCS')
-            action = torch.from_numpy(action.value).type_as(data.x)
+                # calculate h_dot using linearization
+                edge_dot = self._env.edge_dynamics(data, action)
+                edge_dot = cp.reshape(edge_dot, (1, edge_dot.shape[0] * edge_dot.shape[1]), order='C')
+                for i in range(h.shape[0]):
+                    constraints.append(
+                        cp.scalar_product(Jh[i], edge_dot) + self.params['alpha'] * h_np[i] + relaxation >= margins[i])
 
-            # simulate the environment to check CBF conditions
-            graphs_next = self._env.forward_graph(data, action)
-            graphs_next = self._env.add_communication_links(graphs_next)
-            h_next = self.cbf(graphs_next)
-            h_dot = (h_next - h) / self._env.dt
-            val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h)
-            val_agent = torch.nonzero(val_h_dot.squeeze(-1))
-            max_val_h_dot = torch.mean(val_h_dot)
+                # action limit
+                low, high = self._env.action_lim
+                constraints.append(action >= np.repeat(low.unsqueeze(0).cpu().numpy(), self.num_agents, axis=0))
+                constraints.append(action <= np.repeat(high.unsqueeze(0).cpu().numpy(), self.num_agents, axis=0))
 
-            if max_val_h_dot <= 0 or i_iter >= 500:
-                break
-            else:
-                for i in val_agent.squeeze(-1):
-                    margins[i] += 0.02  # increase margin and solve again
-                i_iter += 1
+                # solve problem
+                prob = cp.Problem(obj, constraints)
+                results = prob.solve(solver='SCS')
+                action = torch.from_numpy(action.value).type_as(data.x)
+
+                # simulate the environment to check CBF conditions
+                graphs_next = self._env.forward_graph(data, action)
+                h_next = self.cbf(graphs_next)
+                h_dot = (h_next - h) / self._env.dt
+                val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h)
+                val_agent = torch.nonzero(val_h_dot.squeeze(-1))
+                max_val_h_dot = torch.mean(val_h_dot)
+
+                if max_val_h_dot <= 0 or i_iter >= 500:
+                    break
+                else:
+                    for i in val_agent.squeeze(-1):
+                        margins[i] += 0.02  # increase margin and solve again
+                    i_iter += 1
 
         return action

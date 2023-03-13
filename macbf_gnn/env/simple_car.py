@@ -73,7 +73,7 @@ class SimpleCars(MultiAgentEnv):
             'car_radius': 0.05,  # radius of the cars
             'dist2goal': 0.05,  # goal reaching threshold
             'buffer_size': 100,  # buffer for received messages
-            'poisson_coeff': 3  # coefficient to generate transmission delays
+            'poisson_coeff': 1  # coefficient to generate transmission delays
         }
         
         
