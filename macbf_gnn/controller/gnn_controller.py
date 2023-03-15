@@ -11,10 +11,10 @@ from macbf_gnn.nn.mlp import MLP
 from .base import MultiAgentController
 
 
-class GNNController(MultiAgentController):
+class ControllerGNN(MultiAgentController):
 
     def __init__(self, num_agents: int, node_dim: int, edge_dim: int, phi_dim: int, action_dim: int):
-        super(GNNController, self).__init__(
+        super(ControllerGNN, self).__init__(
             num_agents=num_agents,
             node_dim=node_dim,
             edge_dim=edge_dim,
@@ -59,5 +59,5 @@ class GNNController(MultiAgentController):
         """
         x = self.feat_transformer(data.x, data.edge_attr, data.edge_index)
         actions = self.feat_2_action(x)
-
+            
         return actions

@@ -9,10 +9,11 @@ from torch_geometric.data import Data, Batch
 from torch_geometric.nn import Sequential
 from torch import Tensor
 from torch.optim import Adam
+from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 from typing import Optional
 
 from macbf_gnn.nn import MLP, CBFGNNLayer
-from macbf_gnn.controller import GNNController
+from macbf_gnn.controller import ControllerGNN
 from macbf_gnn.env import MultiAgentEnv
 
 from .base import Algorithm
@@ -53,6 +54,7 @@ class CBFGNN(nn.Module):
         """
         x = self.feat_transformer(data.x, data.edge_attr, data.edge_index)
         h = self.feat_2_CBF(x)
+        
         return h
 
     def forward_explict(self, x: Tensor, edge_index: Tensor) -> Tensor:
@@ -88,7 +90,7 @@ class MACBFGNN(Algorithm):
             edge_dim=self.edge_dim,
             phi_dim=32
         ).to(device)
-        self.actor = GNNController(
+        self.actor = ControllerGNN(
             num_agents=self.num_agents,
             node_dim=self.node_dim,
             edge_dim=self.edge_dim,
@@ -122,12 +124,12 @@ class MACBFGNN(Algorithm):
 
     @torch.no_grad()
     def act(self, data: Data) -> Tensor:
-        # with torch.no_grad():
-        #     return self.actor(data)
-        return self.actor(data)
+        if data.edge_attr.numel():
+            return self.actor(data)
+            
+        else:
+            return 0
 
-
-    @torch.no_grad()
     def step(self, data: Data) -> Tensor:
         if data.edge_attr.numel():
             action = self.actor(data)
@@ -161,81 +163,86 @@ class MACBFGNN(Algorithm):
                 curr_graphs = self.buffer.sample(self.batch_size // 10, True)
                 prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10, True)
                 graph_list = curr_graphs + prev_graphs
-                
-            # get CBF values and the control inputs
-            graphs = Batch.from_data_list(graph_list)
-            h = self.cbf(graphs)
-            actions = self.actor(graphs)
-
-            # calculate loss
-            eps = self.params['eps']
-
-            # unsafe region h(x) < 0
-            unsafe_mask = self._env.unsafe_mask(graphs)
-            h_unsafe = h[unsafe_mask]
-            if h_unsafe.numel():
-                max_val_unsafe = torch.relu(h_unsafe + eps)
-                loss_unsafe = torch.mean(max_val_unsafe)
-                acc_unsafe = torch.mean(torch.less(h_unsafe, 0).type_as(h_unsafe))
-                
-            else:
-                loss_unsafe = torch.tensor(0.0).type_as(h_unsafe)
-                acc_unsafe = torch.tensor(1.0).type_as(h_unsafe)
-                
-            # safe region h(x) > 0
-            safe_mask = self._env.safe_mask(graphs)
-            h_safe = h[safe_mask]
-            if h_safe.numel():
-                max_val_safe = torch.relu(-h_safe + eps)
-                loss_safe = torch.mean(max_val_safe)
-                acc_safe = torch.mean(torch.greater_equal(h_safe, 0).type_as(h_safe))
-                
-            else:
-                loss_safe = torch.tensor(0.0).type_as(h_unsafe)
-                acc_safe = torch.tensor(1.0).type_as(h_unsafe)
-                
-            # derivative loss h_dot + \alpha h > 0
-            graphs_next = self._env.forward_graph(graphs, actions)
-            h_next = self.cbf(graphs_next)
-            graphs_next = []
-            for i_graph, this_graph in enumerate(graph_list):
-                this_graph_next = self._env.forward_graph(this_graph, actions[i_graph * self.num_agents: (i_graph + 1) * self.num_agents])
-                graphs_next.append(this_graph_next)
-                
-            graphs_next = Batch.from_data_list(graphs_next)
-            h_next_new_link = self.cbf(graphs_next)
-            h_dot = (h_next - h) / self._env.dt
-            h_dot_new_link = (h_next_new_link - h) / self._env.dt
-            residue = (h_dot_new_link - h_dot).clone().detach()
-            h_dot = residue + h_dot
-            max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + eps)
-            loss_h_dot = torch.mean(max_val_h_dot)
-            acc_h_dot = torch.mean(torch.greater_equal(h_dot + self.params['alpha'] * h, 0).type_as(h_dot))
             
-            # action loss
-            loss_action = torch.mean(torch.square(actions).sum(dim=1))
+            graphs = [graph for graph in graph_list if graph.edge_attr] # discard graphs with no data
+            if graphs:
+                batched_edge_attr = self.batch_edge_attr(graphs)
+                graphs = Batch.from_data_list(graphs)
+                graphs.edge_attr = batched_edge_attr
 
-            # backpropagation
-            loss = self.params['loss_unsafe_coef'] * loss_unsafe + \
-                   self.params['loss_safe_coef'] * loss_safe + \
-                   self.params['loss_h_dot_coef'] * loss_h_dot + \
-                   self.params['loss_action_coef'] * loss_action
-            self.optim_cbf.zero_grad(set_to_none=True)
-            self.optim_actor.zero_grad(set_to_none=True)
-            loss.backward()
-            self.optim_cbf.step()
-            self.optim_actor.step()
+                # get CBF values and the control inputs
+                h = self.cbf(graphs)
+                actions = self.actor(graphs)
 
-            # save loss
-            writer.add_scalar('loss/unsafe', loss_unsafe.item(), step * self.params['inner_iter'] + i_inner)
-            writer.add_scalar('loss/safe', loss_safe.item(), step * self.params['inner_iter'] + i_inner)
-            writer.add_scalar('loss/derivative', loss_h_dot.item(), step * self.params['inner_iter'] + i_inner)
-            writer.add_scalar('loss/action', loss_action.item(), step * self.params['inner_iter'] + i_inner)
+                # calculate loss
+                eps = self.params['eps']
 
-            # save accuracy
-            writer.add_scalar('acc/unsafe', acc_unsafe.item(), step * self.params['inner_iter'] + i_inner)
-            writer.add_scalar('acc/safe', acc_safe.item(), step * self.params['inner_iter'] + i_inner)
-            writer.add_scalar('acc/derivative', acc_h_dot.item(), step * self.params['inner_iter'] + i_inner)
+                # unsafe region h(x) < 0
+                unsafe_mask = self._env.unsafe_mask(graphs)
+                h_unsafe = h[unsafe_mask]
+                if h_unsafe.numel():
+                    max_val_unsafe = torch.relu(h_unsafe + eps)
+                    loss_unsafe = torch.mean(max_val_unsafe)
+                    acc_unsafe = torch.mean(torch.less(h_unsafe, 0).type_as(h_unsafe))
+                    
+                else:
+                    loss_unsafe = torch.tensor(0.0).type_as(h_unsafe)
+                    acc_unsafe = torch.tensor(1.0).type_as(h_unsafe)
+                    
+                # safe region h(x) > 0
+                safe_mask = self._env.safe_mask(graphs)
+                h_safe = h[safe_mask]
+                if h_safe.numel():
+                    max_val_safe = torch.relu(-h_safe + eps)
+                    loss_safe = torch.mean(max_val_safe)
+                    acc_safe = torch.mean(torch.greater_equal(h_safe, 0).type_as(h_safe))
+                    
+                else:
+                    loss_safe = torch.tensor(0.0).type_as(h_unsafe)
+                    acc_safe = torch.tensor(1.0).type_as(h_unsafe)
+                    
+                # derivative loss h_dot + \alpha h > 0
+                graphs_next = self._env.forward_graph(graphs, actions)
+                h_next = self.cbf(graphs_next)
+                graphs_next = []
+                for i_graph, this_graph in enumerate(graph_list):
+                    this_graph_next = self._env.forward_graph(this_graph, actions[i_graph * self.num_agents: (i_graph + 1) * self.num_agents])
+                    graphs_next.append(this_graph_next)
+                    
+                graphs_next = Batch.from_data_list(graphs_next)
+                h_next_new_link = self.cbf(graphs_next)
+                h_dot = (h_next - h) / self._env.dt
+                h_dot_new_link = (h_next_new_link - h) / self._env.dt
+                residue = (h_dot_new_link - h_dot).clone().detach()
+                h_dot = residue + h_dot
+                max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + eps)
+                loss_h_dot = torch.mean(max_val_h_dot)
+                acc_h_dot = torch.mean(torch.greater_equal(h_dot + self.params['alpha'] * h, 0).type_as(h_dot))
+                
+                # action loss
+                loss_action = torch.mean(torch.square(actions).sum(dim=1))
+
+                # backpropagation
+                loss = self.params['loss_unsafe_coef'] * loss_unsafe + \
+                    self.params['loss_safe_coef'] * loss_safe + \
+                    self.params['loss_h_dot_coef'] * loss_h_dot + \
+                    self.params['loss_action_coef'] * loss_action
+                self.optim_cbf.zero_grad(set_to_none=True)
+                self.optim_actor.zero_grad(set_to_none=True)
+                loss.backward()
+                self.optim_cbf.step()
+                self.optim_actor.step()
+
+                # save loss
+                writer.add_scalar('loss/unsafe', loss_unsafe.item(), step * self.params['inner_iter'] + i_inner)
+                writer.add_scalar('loss/safe', loss_safe.item(), step * self.params['inner_iter'] + i_inner)
+                writer.add_scalar('loss/derivative', loss_h_dot.item(), step * self.params['inner_iter'] + i_inner)
+                writer.add_scalar('loss/action', loss_action.item(), step * self.params['inner_iter'] + i_inner)
+
+                # save accuracy
+                writer.add_scalar('acc/unsafe', acc_unsafe.item(), step * self.params['inner_iter'] + i_inner)
+                writer.add_scalar('acc/safe', acc_safe.item(), step * self.params['inner_iter'] + i_inner)
+                writer.add_scalar('acc/derivative', acc_h_dot.item(), step * self.params['inner_iter'] + i_inner)
 
         # merge the current buffer to the memory
         self.memory.merge(self.buffer)
@@ -248,6 +255,26 @@ class MACBFGNN(Algorithm):
         }
         
         
+    def batch_edge_attr(self, graphs):
+        max_len = 0
+        for graph in graphs:
+            max_len = max(max_len, len(graph.edge_attr.batch_sizes))
+            
+        edge_attrs = []
+        edge_attr_lens = []
+        for graph in graphs:
+            (edge_attr_graph, edge_attr_lens_graph) = pad_packed_sequence(
+                graph.edge_attr, batch_first=True, total_length=max_len)
+            edge_attrs.append(edge_attr_graph)
+            edge_attr_lens.append(edge_attr_lens_graph)
+            
+        edge_attrs = torch.cat(edge_attrs)
+        edge_attr_lens = torch.cat(edge_attr_lens)
+        batched_edge_attr = pack_padded_sequence(
+            edge_attrs, edge_attr_lens, batch_first = True, enforce_sorted=False)
+            
+        return batched_edge_attr
+                
     def save(self, save_dir: str):
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)

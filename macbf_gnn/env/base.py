@@ -243,19 +243,43 @@ class MultiAgentEnv(ABC):
         pass
 
     @abstractmethod
-    def add_communication_links(self, data: Data) -> Data:
+    def add_communication_links(self, data: Data) -> List[int]:
         """
-        Add communication links to the graph.
+        Add communication links to the graph at the current time and stores links into agents' data.
 
         Parameters
         ----------
         data: Data,
-            graph data
+            graph data at current time
+
+        Returns
+        -------
+        neigh_sizes: List[int],
+            dimension of neighborhoods of agents at current time
+        """
+        pass
+    
+    @abstractmethod
+    def add_edge_attributes(self, data: Data) -> Data:
+        """
+        Add communication links to the graph at the current time and stores links into agents' data.
+
+        Parameters
+        ----------
+        data: Data,
+            graph data at current time
 
         Returns
         -------
         data: Data,
-            graph with added edge_index and edge_attrs
+            graph data with edge_index and edge_attr of delayed data received at current time
+        """
+        pass
+
+    @abstractmethod
+    def transmit_data(self, neigh_sizes: List[int]):
+        """
+        Simulate data transmission and reception with communication delays.
         """
         pass
 
@@ -352,32 +376,30 @@ class MultiAgentEnv(ABC):
 
 class Agent(ABC):
     
-    def __init__(self, buffer_size: int=100):
+    def __init__(self, buffer_size, max_age):
         super(Agent, self).__init__()
         self.buffer_size = buffer_size
+        self.max_age = max_age
         self._neighbors = deque(maxlen = self.buffer_size)
         self._delays = deque(maxlen = self.buffer_size)
         self._neighbor_data = dict()
-        
         
     @property
     def neighbor_data(self):
         return self._neighbor_data
     
-    
-    def reset(self):
+    def reset_data(self):
         self._neighbors.clear()
         self._delays.clear()
         self._neighbor_data.clear()
     
-    
     def copy(self):
         return copy.deepcopy(self)
-    
     
     def store_delay(self, delay: int):
         """
         Store communication delay for transmission started at current time.
+
         Parameters
         ----------
         delay: int,
@@ -385,10 +407,10 @@ class Agent(ABC):
         """
         self._delays.append(delay)
         
-        
     def store_neighbors(self, neighbors: List[int]):
         """
         Store agents to which data are transmitted at current time.
+
         Parameters
         ----------
         neighbors: List[int],
@@ -396,21 +418,37 @@ class Agent(ABC):
         """
         self._neighbors.append(neighbors)
         
-        
     @abstractmethod
-    def store_data(self, neighbor: int, data: Tensor) -> bool:
+    def store_data(self, neighbor: int, data: Tensor, delay: int) -> bool:
         """
         Store data that have been received from neighbors at the current time step.
+
         Parameters
         ----------
         neighbor: int,
             index of the neighbor
         data: Tensor (state_dim),
-            data received from the neighbor
+            state information received from the neighbor
+        delay: int,
+            communication delay after which data are received
             
         Returns
         -------
         data_stored: bool,
             True if data can be stored, False otherwise
+        """
+        pass
+            
+    @abstractmethod
+    def update_ages(self):
+        """
+        Update AoI of stored data.
+        """
+        pass
+                
+    @abstractmethod
+    def remove_old_data(self):
+        """
+        Remove stored data whose AoI is too large.
         """
         pass

@@ -2,14 +2,15 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
+from copy import deepcopy
 from typing import Tuple, Optional, Union
+from collections import deque
 from torch import Tensor
 from torch_geometric.data import Data
 from torch_geometric.transforms.radius_graph import RadiusGraph
 from torch_geometric.utils import mask_to_index
+from torch.nn.utils.rnn import pack_sequence
 from cvxpy import Expression
-from collections import deque
-from copy import deepcopy
 from scipy.stats import poisson
 
 from .utils import lqr, plot_graph
@@ -18,16 +19,16 @@ from .base import Agent, MultiAgentEnv
 
 class SimpleCars(MultiAgentEnv):
 
-    def __init__(self, num_agents: int, device: torch.device, dt: float = 0.03, params: dict = None):
+    def __init__(self, num_agents: int, device: torch.device, dt: float = 0.05, params: dict = None):
         super(SimpleCars, self).__init__(num_agents, device, dt, params)
-
+        
         # state trajectory
         self._states = deque(maxlen=self._params['buffer_size'])
         
         # cars
-        car = SimpleCar(buffer_size=self._params['buffer_size'])
+        car = SimpleCar(buffer_size=self._params['buffer_size'], max_age=self._params['max_age'])
         self._cars = [car.copy() for _ in range(self.num_agents)]
-        
+
         # builder of the graph
         self._builder = RadiusGraph(self._params['comm_radius'], max_num_neighbors=self.num_agents)
 
@@ -69,11 +70,12 @@ class SimpleCars(MultiAgentEnv):
     def default_params(self) -> dict:
         return {
             'm': 1.0,  # mass of the car
-            'comm_radius': 1.0,  # communication radius
-            'car_radius': 0.05,  # radius of the cars
-            'dist2goal': 0.05,  # goal reaching threshold
-            'buffer_size': 100,  # buffer for received messages
-            'poisson_coeff': 1  # coefficient to generate transmission delays
+            'comm_radius': 1.0, # communication radius
+            'car_radius': 0.05, # radius of the cars
+            'dist2goal': 0.03,  # goal reaching threshold
+            'buffer_size': 10,  # buffer for received messages
+            'poisson_coeff':.5, # coefficient to generate transmission delays
+            'max_age': 10       # maximum age allowed for received messages
         }
         
         
@@ -128,15 +130,18 @@ class SimpleCars(MultiAgentEnv):
                 goals[i + self.num_agents // 2] = states[i] + self._params['car_radius']
         else:
             raise ValueError('Reset environment: unknown type of mode!')
+            
+        # record goals
+        self._goal = goals
 
         # add velocity
         states = torch.cat([states, torch.zeros(self.num_agents, 2, device=self.device)], dim=1)
 
-        # record goals
-        self._goal = goals
-        
         # store states
         self._states.append(states)
+        
+        # reset agents' data
+        [car.reset_data() for car in self._cars]
 
         # build graph
         data = Data(x=torch.zeros_like(states), pos=states[:, :2], states=states)
@@ -169,17 +174,23 @@ class SimpleCars(MultiAgentEnv):
         with torch.no_grad():
             state = self.forward(self.state, action)
             self._states.append(state)
-
+        
         # construct graph using the new states
         data = Data(x=torch.zeros_like(state), pos=state[:, :2], states=state)
         neigh_sizes = self.add_communication_links(data)
+        
+        # update age of received data
+        [car.update_ages() for car in self._cars]
         
         # simulate transmission of delayed data among cars
         self.transmit_data(neigh_sizes)
         
         # store current edge attributes with received delayed data
         self._data = self.add_edge_attributes(data)
-
+        
+        # remove neighbors with age older than maximum allowed        
+        [car.remove_old_data() for car in self._cars]
+        
         # the episode ends when reaching max_episode_steps or all the agents reach the goal
         time_up = self._t >= self.max_episode_steps
         reach = torch.less(torch.norm(self.data.states[:, :2] - self._goal, dim=1), self._params['dist2goal']).all()
@@ -207,24 +218,25 @@ class SimpleCars(MultiAgentEnv):
                 delay_rec = delay_list[idx_neighbors]
                 for neighbor in neighbors:
                     state_diff = self._states[-delay_rec - 1][idx_car] - self._states[-delay_rec - 1][neighbor]
-                    self._cars[neighbor].store_data(idx_car, state_diff)
-                    
-                    
+                    self._cars[neighbor].store_data(idx_car, state_diff, delay_rec)
+
     def forward_graph(self, data: Data, action: Tensor) -> Data:
         
         # calculate next state using dynamics
         action = action + self.u_ref(data)
         lower_lim, upper_lim = self.action_lim
         action = torch.clamp(action, lower_lim, upper_lim)
-        states_next = self.forward(data.states, action)
-
+        state = self.forward(data.states, action)
+        
         # construct the graph of the next step, retaining the connection
         data_next = Data(
-            x=torch.zeros_like(states_next),
-            pos=states_next[:, :2],
-            states=states_next,
-            edge_index=data.edge_index,
-            edge_attr=data.edge_attr)
+            x=torch.zeros_like(state),
+            pos=state[:, :2],
+            states=state,
+            edge_index=data.edge_index)
+        edge_attr = deepcopy(data.edge_attr)
+        edge_attr.data[:,-1] += 1
+        data_next.edge_attr = edge_attr
 
         return data_next
     
@@ -279,8 +291,7 @@ class SimpleCars(MultiAgentEnv):
             return tuple(gif)
         else:
             return gif[0]
-        
-        
+
     def add_communication_links(self, data: Data) -> list:
         data = self._builder(data)
         edge_index_curr = data.edge_index
@@ -291,8 +302,7 @@ class SimpleCars(MultiAgentEnv):
             neigh_sizes[car_idx] = len(neighbors)
             
         return neigh_sizes
-    
-    
+        
     def add_edge_attributes(self, data: Data) -> Data:
         edge_index = [[], []]
         edge_attr = []
@@ -303,11 +313,12 @@ class SimpleCars(MultiAgentEnv):
                 edge_attr.append(car.neighbor_data[neighbor])
                 
         data.edge_index = torch.tensor(edge_index, dtype=torch.long)
-        if len(edge_attr):
-            data.edge_attr = torch.stack(edge_attr)
-        else:
-            data.edge_attr = torch.tensor(edge_attr)
+        if edge_attr:
+            data.edge_attr = pack_sequence(edge_attr, enforce_sorted=False)
             
+        else:
+            data.edge_attr = edge_attr
+                    
         return data
 
 
@@ -379,17 +390,55 @@ class SimpleCars(MultiAgentEnv):
         
         return mask
 
-
 class SimpleCar(Agent):
     
-    def __init__(self, buffer_size):
-        super().__init__(buffer_size)
+    def __init__(self, buffer_size, max_age):
+        super().__init__(buffer_size, max_age)
         
+    def store_data(self, neighbor: int, data: Tensor, delay: int) -> bool:
+        data_stored = False
+        if delay <= self.max_age:
+            data_stored = True
+            data = torch.reshape(data, (-1,))
+            new_data = torch.unsqueeze(torch.cat((data, torch.tensor([delay]))), 0)
+            if neighbor not in self._neighbor_data:
+                self._neighbor_data[neighbor] = new_data
+                
+            else:
+                
+                # insertionSort: oldest data first      
+                idx = 0
+                while self._neighbor_data[neighbor][idx][-1] > delay:
+                    idx += 1
+                    if idx == len(self._neighbor_data[neighbor]):
+                        break
+
+                previous_data = self._neighbor_data[neighbor]
+                self._neighbor_data[neighbor] = torch.cat(
+                    (previous_data[:idx], new_data, previous_data[idx:]))
         
-    def store_data(self, neighbor: int, data: Tensor):
-        data = torch.reshape(data, (-1,))
-        self._neighbor_data[neighbor] = data        
-    
+        return data_stored
+            
+    def update_ages(self):
+        for neighbor in self.neighbor_data:
+            for msg in self.neighbor_data[neighbor]:
+                msg[-1] += 1
+                
+    def remove_old_data(self):
+        old_neighbors = []
+        for neighbor in self._neighbor_data:
+            if self._neighbor_data[neighbor][-1][-1] > self.max_age:
+                old_neighbors.append(neighbor)
+                
+        for neighbor in old_neighbors:
+            del self._neighbor_data[neighbor]
+            
+        for neighbor in self._neighbor_data:
+            idx = 0 
+            while self._neighbor_data[neighbor][idx][-1] > self.max_age:
+                idx += 1
+                
+            self._neighbor_data[neighbor] = self._neighbor_data[neighbor][idx:]
     
     def data_delivered(self):
         neighbors = []
