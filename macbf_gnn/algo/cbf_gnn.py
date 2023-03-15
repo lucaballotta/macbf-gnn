@@ -124,14 +124,14 @@ class MACBFGNN(Algorithm):
 
     @torch.no_grad()
     def act(self, data: Data) -> Tensor:
-        if data.edge_attr.numel():
+        if data.edge_attr:
             return self.actor(data)
             
         else:
             return 0
 
     def step(self, data: Data) -> Tensor:
-        if data.edge_attr.numel():
+        if data.edge_attr:
             action = self.actor(data)
         else:
             action = 0
@@ -204,17 +204,7 @@ class MACBFGNN(Algorithm):
                 # derivative loss h_dot + \alpha h > 0
                 graphs_next = self._env.forward_graph(graphs, actions)
                 h_next = self.cbf(graphs_next)
-                graphs_next = []
-                for i_graph, this_graph in enumerate(graph_list):
-                    this_graph_next = self._env.forward_graph(this_graph, actions[i_graph * self.num_agents: (i_graph + 1) * self.num_agents])
-                    graphs_next.append(this_graph_next)
-                    
-                graphs_next = Batch.from_data_list(graphs_next)
-                h_next_new_link = self.cbf(graphs_next)
                 h_dot = (h_next - h) / self._env.dt
-                h_dot_new_link = (h_next_new_link - h) / self._env.dt
-                residue = (h_dot_new_link - h_dot).clone().detach()
-                h_dot = residue + h_dot
                 max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + eps)
                 loss_h_dot = torch.mean(max_val_h_dot)
                 acc_h_dot = torch.mean(torch.greater_equal(h_dot + self.params['alpha'] * h, 0).type_as(h_dot))
