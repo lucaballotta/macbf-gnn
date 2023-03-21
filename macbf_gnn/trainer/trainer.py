@@ -107,7 +107,7 @@ class Trainer:
             epi_reward = 0.
 
             while True:
-                action = self.algo.apply(data)
+                action = self.algo.act(data)
                 data, reward, done, _ = self.env_test.step(action)
                 epi_reward += reward
                 if done:

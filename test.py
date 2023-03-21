@@ -77,7 +77,7 @@ def test(args):
     start_time = time.time()
     results = []
     for i in range(args.epi):
-        results.append(eval_ctrl_epi(algo.apply, env, np.random.randint(100000), not args.no_video))
+        results.append(eval_ctrl_epi(algo.act, env, np.random.randint(100000), not args.no_video))
     rewards, lengths, video, info = zip(*results)
     video = sum(video, ())
 

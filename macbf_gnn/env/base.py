@@ -383,6 +383,7 @@ class Agent(ABC):
         self._neighbors = deque(maxlen = self.buffer_size)
         self._delays = deque(maxlen = self.buffer_size)
         self._neighbor_data = dict()
+        self._past_states = dict()
         
     @property
     def neighbor_data(self):
@@ -392,6 +393,7 @@ class Agent(ABC):
         self._neighbors.clear()
         self._delays.clear()
         self._neighbor_data.clear()
+        self._past_states.clear()
     
     def copy(self):
         return copy.deepcopy(self)
@@ -419,23 +421,45 @@ class Agent(ABC):
         self._neighbors.append(neighbors)
         
     @abstractmethod
-    def store_data(self, neighbor: int, data: Tensor, delay: int) -> bool:
+    def store_data(self, neighbor: int, data: Tensor, delay: int) -> Tuple[bool, int]:
         """
-        Store data that have been received from neighbors at the current time step.
+        Store state differences that have been received from neighbors at the current time step.
 
         Parameters
         ----------
         neighbor: int,
             index of the neighbor
         data: Tensor (state_dim),
-            state information received from the neighbor
+            state difference w.r.t. state received from the neighbor
         delay: int,
             communication delay after which data are received
             
         Returns
         -------
-        data_stored: bool,
+        stored: bool,
             True if data can be stored, False otherwise
+        idx: int,
+            location where data have been stored in self._neighbor_data[neighbor]
+            
+            None if stored is False
+        """
+        pass
+    
+    @abstractmethod
+    def store_states(self, agent_state: Tensor, neighbor: int, neighbor_state: Tensor, idx: int):
+        """
+        Store states that have been received from neighbors at the current time step.
+
+        Parameters
+        ----------
+        agent_state: Tensor (state_dim),
+            state of agent at past time corresponding to neighbor_state
+        neighbor: int,
+            index of the neighbor
+        neighbor_state: Tensor (state_dim),
+            state received from the neighbor
+        idx: int,
+            location where to store states in self._past_states[neighbor]
         """
         pass
             

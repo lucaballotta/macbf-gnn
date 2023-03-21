@@ -74,7 +74,7 @@ class SimpleCars(MultiAgentEnv):
             'car_radius': 0.05, # radius of the cars
             'dist2goal': 0.03,  # goal reaching threshold
             'buffer_size': 10,  # buffer for received messages
-            'poisson_coeff':.5, # coefficient to generate transmission delays
+            'poisson_coeff':.2, # coefficient to generate transmission delays
             'max_age': 10       # maximum age allowed for received messages
         }
         
@@ -207,7 +207,7 @@ class SimpleCars(MultiAgentEnv):
         
         # transmit data with delays
         for car_idx, car in enumerate(self._cars):
-            avg_del = neigh_sizes[car_idx] * self._params['poisson_coeff']
+            avg_del = np.ceil(neigh_sizes[car_idx] * self._params['poisson_coeff'])
             delay_tx = poisson.rvs(avg_del)
             car.store_delay(delay_tx)
             
@@ -218,7 +218,12 @@ class SimpleCars(MultiAgentEnv):
                 delay_rec = delay_list[idx_neighbors]
                 for neighbor in neighbors:
                     state_diff = self._states[-delay_rec - 1][idx_car] - self._states[-delay_rec - 1][neighbor]
-                    self._cars[neighbor].store_data(idx_car, state_diff, delay_rec)
+                    stored, idx = self._cars[neighbor].store_data(
+                        idx_car, state_diff, delay_rec)
+                    if stored:
+                        self._cars[neighbor].store_states(
+                            self._states[-delay_rec - 1][neighbor], idx_car, self._states[-delay_rec - 1][idx_car], idx)
+
 
     def forward_graph(self, data: Data, action: Tensor) -> Data:
         
@@ -292,6 +297,7 @@ class SimpleCars(MultiAgentEnv):
         else:
             return gif[0]
 
+
     def add_communication_links(self, data: Data) -> list:
         data = self._builder(data)
         edge_index_curr = data.edge_index
@@ -303,6 +309,7 @@ class SimpleCars(MultiAgentEnv):
             
         return neigh_sizes
         
+        
     def add_edge_attributes(self, data: Data) -> Data:
         edge_index = [[], []]
         edge_attr = []
@@ -313,7 +320,7 @@ class SimpleCars(MultiAgentEnv):
                 edge_attr.append(car.neighbor_data[neighbor])
                 
         data.edge_index = torch.tensor(edge_index, dtype=torch.long)
-        if edge_attr:
+        if len(edge_attr) > 0:
             data.edge_attr = pack_sequence(edge_attr, enforce_sorted=False)
             
         else:
@@ -395,10 +402,11 @@ class SimpleCar(Agent):
     def __init__(self, buffer_size, max_age):
         super().__init__(buffer_size, max_age)
         
-    def store_data(self, neighbor: int, data: Tensor, delay: int) -> bool:
-        data_stored = False
+    def store_data(self, neighbor: int, data: Tensor, delay: int) -> Tuple[bool, int]:
+        stored = False
+        idx = None
         if delay <= self.max_age:
-            data_stored = True
+            stored = True
             data = torch.reshape(data, (-1,))
             new_data = torch.unsqueeze(torch.cat((data, torch.tensor([delay]))), 0)
             if neighbor not in self._neighbor_data:
@@ -406,7 +414,7 @@ class SimpleCar(Agent):
                 
             else:
                 
-                # insertionSort: oldest data first      
+                # insertionSort: oldest data first
                 idx = 0
                 while self._neighbor_data[neighbor][idx][-1] > delay:
                     idx += 1
@@ -417,7 +425,19 @@ class SimpleCar(Agent):
                 self._neighbor_data[neighbor] = torch.cat(
                     (previous_data[:idx], new_data, previous_data[idx:]))
         
-        return data_stored
+        return stored, idx
+    
+    def store_states(self, agent_state: Tensor, neighbor: int, neighbor_state: Tensor, idx: int):
+        agent_state = torch.reshape(agent_state, (-1,))
+        neighbor_state = torch.reshape(neighbor_state, (-1,))
+        new_data = torch.unsqueeze(torch.stack((agent_state, neighbor_state)), 0)
+        if neighbor not in self._past_states:
+            self._past_states[neighbor] = new_data
+            
+        else:
+            previous_past_states = self._past_states[neighbor]
+            self._past_states[neighbor] = torch.cat(
+                (previous_past_states[:idx], new_data, previous_past_states[idx:]))    
             
     def update_ages(self):
         for neighbor in self.neighbor_data:

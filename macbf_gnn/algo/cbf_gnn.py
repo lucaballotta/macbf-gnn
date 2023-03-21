@@ -131,16 +131,12 @@ class MACBFGNN(Algorithm):
             return 0
 
     def step(self, data: Data) -> Tensor:
-        if data.edge_attr:
-            action = self.actor(data)
-        else:
-            action = 0
-            
         is_safe = True
         if torch.any(self._env.unsafe_mask(data)):
             is_safe = not is_safe
             
         self.buffer.append(data, is_safe)
+        action = self.act(data)
         
         return action
 
@@ -164,15 +160,14 @@ class MACBFGNN(Algorithm):
                 prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10, True)
                 graph_list = curr_graphs + prev_graphs
             
-            graphs = [graph for graph in graph_list if graph.edge_attr] # discard graphs with no data
-            if graphs:
-                batched_edge_attr = self.batch_edge_attr(graphs)
-                graphs = Batch.from_data_list(graphs)
+            graph_list = [graph for graph in graph_list if graph.edge_attr] # discard graphs with no data
+            if graph_list:
+                batched_edge_attr = self.batch_edge_attr(graph_list)
+                graphs = Batch.from_data_list(graph_list)
                 graphs.edge_attr = batched_edge_attr
 
                 # get CBF values and the control inputs
                 h = self.cbf(graphs)
-                actions = self.actor(graphs)
 
                 # calculate loss
                 eps = self.params['eps']
@@ -198,10 +193,11 @@ class MACBFGNN(Algorithm):
                     acc_safe = torch.mean(torch.greater_equal(h_safe, 0).type_as(h_safe))
                     
                 else:
-                    loss_safe = torch.tensor(0.0).type_as(h_unsafe)
-                    acc_safe = torch.tensor(1.0).type_as(h_unsafe)
+                    loss_safe = torch.tensor(0.0).type_as(h_safe)
+                    acc_safe = torch.tensor(1.0).type_as(h_safe)
                     
                 # derivative loss h_dot + \alpha h > 0
+                actions = self.actor(graphs)
                 graphs_next = self._env.forward_graph(graphs, actions)
                 h_next = self.cbf(graphs_next)
                 h_dot = (h_next - h) / self._env.dt
@@ -245,14 +241,14 @@ class MACBFGNN(Algorithm):
         }
         
         
-    def batch_edge_attr(self, graphs):
+    def batch_edge_attr(self, graph_list):
         max_len = 0
-        for graph in graphs:
+        for graph in graph_list:
             max_len = max(max_len, len(graph.edge_attr.batch_sizes))
             
         edge_attrs = []
         edge_attr_lens = []
-        for graph in graphs:
+        for graph in graph_list:
             (edge_attr_graph, edge_attr_lens_graph) = pad_packed_sequence(
                 graph.edge_attr, batch_first=True, total_length=max_len)
             edge_attrs.append(edge_attr_graph)
@@ -264,6 +260,7 @@ class MACBFGNN(Algorithm):
             edge_attrs, edge_attr_lens, batch_first = True, enforce_sorted=False)
             
         return batched_edge_attr
+                
                 
     def save(self, save_dir: str):
         if not os.path.exists(save_dir):
@@ -280,11 +277,16 @@ class MACBFGNN(Algorithm):
 
     def apply(self, data: Data) -> Tensor:
         action = 0
+        
         if len(data.edge_attr):
             margins = np.zeros(data.states.shape[0])
 
             # calculate the Jacobian of h
-            data.edge_attr.requires_grad = True
+            if torch.is_tensor(data.edge_attr):
+                data.edge_attr.requires_grad = True
+            else:
+                data.edge_attr.data.requires_grad = True
+                
             h = self.cbf(data)
             Jh = []
             for i in range(h.shape[0]):
