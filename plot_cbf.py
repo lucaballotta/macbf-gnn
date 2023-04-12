@@ -65,30 +65,32 @@ def plot_cbf(args):
     os.mkdir(fig_path)
 
     # simulate the environment and plot the CBFs
-    data = env.reset()
-    t = 0
     for i_epi in range(args.epi):
+        data = env.reset()
+        t = 0
         os.mkdir(os.path.join(fig_path, f'epi_{i_epi}'))
         while True:
             action = algo.apply(data)
-            next_data, reward, done, _ = env.step(action)
+
             if hasattr(algo, 'cbf'):
                 action_real = action + env.u_ref(data)
                 ax = plot_cbf_contour(
-                    algo.cbf, data, env, args.agent, args.x_dim, args.y_dim, action_real[args.agent, :])
-                h_prev = algo.cbf(data)
-                h_post = algo.cbf(next_data)
-                h_deriv = (h_post - h_prev) / env.dt + algo.params['alpha'] * h_prev
-                vio_agent = torch.nonzero(torch.relu(-h_deriv))
-                if vio_agent.shape[0] > 0:
-                    vio_text = f'violate agent: '
-                    for i in vio_agent:
-                        vio_text += f'{i[0].item()}: {h_deriv[i[0]].item()}, '
-                    ax.text(0., 0.93, vio_text[:-2], transform=ax.transAxes, fontsize=14)
+                    algo.cbf, data, env, args.agent, args.x_dim, args.y_dim, action_real[args.agent, :], True)
+                ax.text(0., 0.93, f'CBF: {algo.cbf(data)[args.agent].cpu().detach().numpy()[0]:.3f}', transform=ax.transAxes, fontsize=14)
+                # h_prev = algo.cbf(data)
+                # h_post = algo.cbf(next_data)
+                # h_deriv = (h_post - h_prev) / env.dt + algo.params['alpha'] * h_prev
+                # vio_agent = torch.nonzero(torch.relu(-h_deriv))
+                # if vio_agent.shape[0] > 0:
+                #     vio_text = f'violate agent: '
+                #     for i in vio_agent:
+                #         vio_text += f'{i[0].item()}: {h_deriv[i[0]].item()}, '
+                #     ax.text(0., 0.93, vio_text[:-2], transform=ax.transAxes, fontsize=14)
                 plt.savefig(os.path.join(os.path.join(fig_path, f'epi_{i_epi}'), f'{t}.png'))
                 plt.close()
             else:
                 raise KeyError('The algorithm must has a CBF function')
+            next_data, reward, done, _ = env.step(action)
             data = next_data
             t += 1
             if done:
@@ -104,7 +106,7 @@ if __name__ == '__main__':
     parser.add_argument('--path', type=str, default=None)
     parser.add_argument('--env', type=str, default=None)
     parser.add_argument('--iter', type=int, default=None)
-    parser.add_argument('--epi', type=int, default=3)
+    parser.add_argument('--epi', type=int, default=1)
     parser.add_argument('--agent', type=int, default=0)
     parser.add_argument('--x-dim', type=int, default=0)
     parser.add_argument('--y-dim', type=int, default=1)

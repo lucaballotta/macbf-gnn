@@ -30,10 +30,10 @@ def train(args):
             'alpha': 1.0,
             'eps': 0.02,
             'inner_iter': 10,
-            'loss_action_coef': 0.001,
+            'loss_action_coef': 0.05,
             'loss_unsafe_coef': 1.0,
             'loss_safe_coef': 1.0,
-            'loss_h_dot_coef': 0.1
+            'loss_h_dot_coef': 1.0
         }
         print('> Using custom hyper-parameters')
     else:

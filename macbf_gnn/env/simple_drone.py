@@ -31,7 +31,7 @@ class SimpleDrone(MultiAgentEnv):
 
     @property
     def state_dim(self) -> int:
-        return 8  # [x, y, z, vx, vy, vz, theta_x, theta_y]
+        return 6  # [x, y, z, vx, vy, vz]
 
     @property
     def node_dim(self) -> int:
@@ -39,7 +39,7 @@ class SimpleDrone(MultiAgentEnv):
 
     @property
     def edge_dim(self) -> int:
-        return 8
+        return 6
 
     @property
     def action_dim(self) -> int:
@@ -52,15 +52,15 @@ class SimpleDrone(MultiAgentEnv):
     @property
     def default_params(self) -> dict:
         return {
-            'area_size': 1.,
+            'area_size': 2.,
             'drone_radius': 0.05,
             'comm_radius': 0.5,
-            'dist2goal': 0.05
+            'dist2goal': 0.02
         }
 
     @property
     def _A(self) -> Tensor:
-        A = torch.zeros(8, 8, dtype=torch.float, device=self.device)
+        A = torch.zeros(6, 6, dtype=torch.float, device=self.device)
         A[0, 3] = 1.
         A[1, 4] = 1.
         A[2, 5] = 1.
@@ -71,7 +71,7 @@ class SimpleDrone(MultiAgentEnv):
 
     @property
     def _B(self) -> Tensor:
-        B = torch.zeros(8, 3, dtype=torch.float, device=self.device)
+        B = torch.zeros(6, 3, dtype=torch.float, device=self.device)
         B[3, 0] = 1.1
         B[4, 1] = 1.1
         B[5, 2] = 6.
@@ -81,16 +81,15 @@ class SimpleDrone(MultiAgentEnv):
         if isinstance(u, Expression):
             A = self._A.cpu().numpy()
             B = self._B.cpu().numpy()
-
-
-        # xdot = Ax + Bu
-        xdot = x @ self._A.t() + u @ self._B.t()
+            xdot = x.cpu().detach().numpy() @ A.T + u @ B.T
+        else:
+            xdot = x @ self._A.t() + u @ self._B.t()
         return xdot
 
     def reset(self) -> Data:
         self._t = 0
-        states = torch.zeros(self.num_agents, 8, device=self.device)
-        goals = torch.zeros(self.num_agents, 8, device=self.device)
+        states = torch.zeros(self.num_agents, 6, device=self.device)
+        goals = torch.zeros(self.num_agents, 6, device=self.device)
 
         # starting points are on the ground
         i = 0
@@ -165,9 +164,6 @@ class SimpleDrone(MultiAgentEnv):
 
         return data_next
 
-    def edge_dynamics(self, data: Data, action: Variable) -> Variable:
-        raise NotImplementedError
-
     def render(self, traj: Optional[Tuple[Data, ...]] = None, return_ax: bool = False, plot_edge: bool = True) -> \
             Union[Tuple[np.array, ...], np.array]:
         return_tuple = True
@@ -228,9 +224,9 @@ class SimpleDrone(MultiAgentEnv):
     @property
     def state_lim(self) -> Tuple[Tensor, Tensor]:
         low_lim = torch.tensor(
-            [self._xyz_min[0], self._xyz_min[1], self._xyz_min[2], -10, -10, -10, 0, 0], device=self.device)
+            [self._xyz_min[0], self._xyz_min[1], self._xyz_min[2], -10, -10, -10], device=self.device)
         high_lim = torch.tensor(
-            [self._xyz_max[0], self._xyz_max[1], self._xyz_max[2], 10, 10, 10, 0, 0], device=self.device)
+            [self._xyz_max[0], self._xyz_max[1], self._xyz_max[2], 10, 10, 10], device=self.device)
         return low_lim, high_lim
 
     @property
@@ -247,12 +243,12 @@ class SimpleDrone(MultiAgentEnv):
             # get used A, B, Q, R
             A = self._A.cpu().numpy() * self.dt + np.eye(self.state_dim)
             B = self._B.cpu().numpy() * self.dt
-            A = A[:, :self.state_dim - 2][:self.state_dim - 2, :]
-            B = B[:self.state_dim - 2, :]
-            Q = np.eye(self.state_dim - 2)
+            # A = A[:, :self.state_dim][:self.state_dim, :]
+            # B = B[:self.state_dim, :]
+            Q = np.eye(self.state_dim)
             R = np.eye(self.action_dim)
             K_np = lqr(A, B, Q, R)
-            K_np = np.concatenate((K_np, np.zeros((3, 2))), axis=1)
+            # K_np = np.concatenate((K_np, np.zeros((3, 2))), axis=1)
             self._K = torch.from_numpy(K_np).type_as(data.states)
 
         # feedback control
@@ -260,21 +256,21 @@ class SimpleDrone(MultiAgentEnv):
         return action.reshape(-1, self.action_dim)
 
     def safe_mask(self, data: Data) -> Tensor:
-        mask = torch.empty(data.states.shape[0])
+        mask = torch.empty(data.states.shape[0]).type_as(data.x)
         for i in range(data.states.shape[0] // self.num_agents):
             state_diff = data.states[self.num_agents * i: self.num_agents * (i + 1)].unsqueeze(1) - \
                          data.states[self.num_agents * i: self.num_agents * (i + 1)].unsqueeze(0)
             pos_diff = state_diff[:, :, :3]
             dist = pos_diff.norm(dim=2)
             dist += torch.eye(dist.shape[0], device=self.device) * (2 * self._params['drone_radius'] + 1)
-            safe = torch.greater(dist, 3 * self._params['drone_radius'])  # 3 is a hyperparameter
+            safe = torch.greater(dist, 4 * self._params['drone_radius'])  # 4 is a hyperparameter
             mask[self.num_agents * i: self.num_agents * (i + 1)] = torch.min(safe, dim=1)[0]
         mask = mask.bool()
 
         return mask
 
     def unsafe_mask(self, data: Data) -> Tensor:
-        mask = torch.empty(data.states.shape[0])
+        mask = torch.empty(data.states.shape[0]).type_as(data.x)
         for i in range(data.states.shape[0] // self.num_agents):
             state_diff = data.states[self.num_agents * i: self.num_agents * (i + 1)].unsqueeze(1) - \
                          data.states[self.num_agents * i: self.num_agents * (i + 1)].unsqueeze(0)

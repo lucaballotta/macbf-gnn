@@ -6,6 +6,7 @@ import yaml
 import matplotlib.pyplot as plt
 import seaborn as sns
 import random
+import copy
 
 from typing import Tuple, Callable, Optional, Union
 from torch_geometric.data import Data, Batch
@@ -13,6 +14,7 @@ from torch import Tensor
 from tqdm import tqdm
 
 from macbf_gnn.env import MultiAgentEnv
+from macbf_gnn.algo.cbf_gnn import CBFGNN
 
 
 def set_seed(seed: int):
@@ -123,7 +125,7 @@ def read_settings(path: str) -> dict:
 
 
 def eval_ctrl_epi(
-        controller: Callable, env: MultiAgentEnv, seed: int = 0, make_video: bool = True, verbose: bool = True,
+        controller: Callable, env: MultiAgentEnv, seed: int = 0, make_video: bool = True, plot_edge: bool = True, verbose: bool = True,
 ) -> Tuple[float, float, Tuple[Union[Tuple[np.array, ...], np.array]], dict]:
     """
     Evaluate the controller for one episode.
@@ -138,6 +140,8 @@ def eval_ctrl_epi(
         random seed
     make_video: bool,
         if true, return the video (a tuple of numpy arrays)
+    plot_edge: bool,
+        if true, plot the edge of the agent graph
     verbose: bool,
         if true, print the evaluation information
 
@@ -160,8 +164,10 @@ def eval_ctrl_epi(
     t = 0
     safe = True
     pbar = tqdm()
+    states = []
     while True:
         action = controller(data)
+        states.append(data.states)
         next_data, reward, done, info = env.step(action)
         epi_length += 1
         epi_reward += reward
@@ -171,7 +177,7 @@ def eval_ctrl_epi(
             safe = safe and info['safe']
 
         if make_video:
-            video.append(env.render())
+            video.append(env.render(plot_edge=plot_edge))
 
         data = next_data
 
@@ -186,13 +192,14 @@ def eval_ctrl_epi(
 
 
 def plot_cbf_contour(
-        cbf_fun: Callable,
+        cbf_fun: CBFGNN,
         data: Data,
         env: MultiAgentEnv,
         agent_id: int,
         x_dim: int,
         y_dim: int,
-        action: Optional[Tensor] = None
+        action: Optional[Tensor] = None,
+        attention: bool = True
 ):
     """
     Plot the contour of the learned CBF.
@@ -227,7 +234,7 @@ def plot_cbf_contour(
     plot_data = []
     for i in range(n_mesh):
         for j in range(n_mesh):
-            state = data.states
+            state = copy.deepcopy(data.states)
             state[agent_id, x_dim] = x[i, j]
             state[agent_id, y_dim] = y[i, j]
             new_data = Data(x=data.x, edge_index=data.edge_index, pos=state[:, :2],
@@ -236,6 +243,8 @@ def plot_cbf_contour(
     plot_data = Batch.from_data_list(plot_data)
     cbf = cbf_fun(plot_data).view(n_mesh, n_mesh, env.num_agents)[:, :, agent_id].detach().cpu()
     ax = env.render(return_ax=True)
+    if attention:
+        ax = plot_attention(ax, cbf_fun.attention, data, agent_id)
     plt.contourf(x, y, cbf, cmap=sns.color_palette("rocket", as_cmap=True), levels=15, alpha=0.5)
     plt.colorbar()
     plt.contour(x, y, cbf, levels=[0.0], colors='blue')
@@ -244,6 +253,18 @@ def plot_cbf_contour(
     if action is not None:
         ax.text(0., 0.89, f'action: {action.cpu().detach().numpy()}', transform=ax.transAxes, fontsize=14)
 
+    return ax
+
+
+def plot_attention(ax, attention_fun: Callable, data: Data, agent_id: int):
+    attention = attention_fun(data).cpu().detach().numpy()
+    pos = data.pos.cpu().detach().numpy()
+    edge_index = data.edge_index.cpu().detach().numpy()
+    edge_centers = (pos[edge_index[0], :] + pos[edge_index[1], :]) / 2
+    for i, text_point in enumerate(edge_centers):
+        if edge_index[1, i] == agent_id:
+            ax.text(text_point[0], text_point[1], f'{attention[i, 0]:.2f}', size=12, color="k", family="sans-serif",
+                    weight="normal", horizontalalignment="center", verticalalignment="center", clip_on=True)
     return ax
 
 

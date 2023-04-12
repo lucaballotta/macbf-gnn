@@ -55,7 +55,9 @@ class SimpleCar(MultiAgentEnv):
             'm': 1.0,  # mass of the car
             'comm_radius': 1.0,  # communication radius
             'car_radius': 0.05,  # radius of the cars
-            'dist2goal': 0.05  # goal reaching threshold
+            'dist2goal': 0.05,  # goal reaching threshold
+            'speed_limit': 0.4,  # maximum speed
+            'max_distance': 1.5  # maximum moving distance to goal
         }
 
     def dynamics(self, x: Tensor, u: Union[Tensor, Expression]) -> Union[Tensor, Expression]:
@@ -73,7 +75,8 @@ class SimpleCar(MultiAgentEnv):
     def reset(self) -> Data:
         self._t = 0
         # side_length = np.sqrt(max(1.0, self.num_agents / 8.0))
-        side_length = self._params['car_radius'] * (10 + 2) * self.num_agents // 2
+        side_length = np.sqrt(self._params['car_radius'] * 10 * self.num_agents)
+        # side_length = np.sqrt(self._params['car_radius'] * (10 + 2) * 8)
         states = torch.zeros(self.num_agents, 2, device=self.device)
         goals = torch.zeros(self.num_agents, 2, device=self.device)
 
@@ -91,14 +94,14 @@ class SimpleCar(MultiAgentEnv):
             # randomly generate goals of agents
             i = 0
             while i < self.num_agents:
-                candidate = torch.rand(2, device=self.device) * side_length
-                # candidate = (torch.rand(2, device=self.device) - 0.5) + states[i]
+                # candidate = torch.rand(2, device=self.device) * side_length
+                candidate = (torch.rand(2, device=self.device) * 2 - 1) * self._params['max_distance'] + states[i]
                 dist_min = torch.norm(goals - candidate, dim=1).min()
                 if dist_min <= self._params['car_radius'] * 4:
                     continue
                 goals[i] = candidate
                 i += 1
-        elif self._mode == 'demo':
+        elif self._mode == 'demo_0':
             for i in range(self.num_agents // 2):
                 states[i] = torch.tensor([i * self._params['car_radius'] * 10, 0], device=self.device)
                 states[i + self.num_agents // 2] = torch.tensor(
@@ -231,8 +234,12 @@ class SimpleCar(MultiAgentEnv):
 
     @property
     def state_lim(self) -> Tuple[Tensor, Tensor]:
-        low_lim = torch.tensor([self._xy_min[0], self._xy_min[1], -10, -10], device=self.device)
-        high_lim = torch.tensor([self._xy_max[0], self._xy_max[1], 10, 10], device=self.device)
+        low_lim = torch.tensor(
+            [self._xy_min[0], self._xy_min[1], -self._params['speed_limit'], -self._params['speed_limit']],
+            device=self.device)
+        high_lim = torch.tensor(
+            [self._xy_max[0], self._xy_max[1], self._params['speed_limit'], self._params['speed_limit']],
+            device=self.device)
         return low_lim, high_lim
 
     @property
@@ -266,21 +273,21 @@ class SimpleCar(MultiAgentEnv):
         return action.reshape(-1, self.action_dim)
 
     def safe_mask(self, data: Data) -> Tensor:
-        mask = torch.empty(data.states.shape[0])
+        mask = torch.empty(data.states.shape[0]).type_as(data.x)
         for i in range(data.states.shape[0] // self.num_agents):
             state_diff = data.states[self.num_agents * i: self.num_agents * (i + 1)].unsqueeze(1) - \
                          data.states[self.num_agents * i: self.num_agents * (i + 1)].unsqueeze(0)
             pos_diff = state_diff[:, :, :2]
             dist = pos_diff.norm(dim=2)
             dist += torch.eye(dist.shape[0], device=self.device) * (2 * self._params['car_radius'] + 1)
-            safe = torch.greater(dist, 3 * self._params['car_radius'])  # 3 is a hyperparameter
+            safe = torch.greater(dist, 4 * self._params['car_radius'])  # 3 is a hyperparameter
             mask[self.num_agents * i: self.num_agents * (i + 1)] = torch.min(safe, dim=1)[0]
         mask = mask.bool()
 
         return mask
 
     def unsafe_mask(self, data: Data) -> Tensor:
-        mask = torch.empty(data.states.shape[0])
+        mask = torch.empty(data.states.shape[0]).type_as(data.x)
         for i in range(data.states.shape[0] // self.num_agents):
             state_diff = data.states[self.num_agents * i: self.num_agents * (i + 1)].unsqueeze(1) - \
                 data.states[self.num_agents * i: self.num_agents * (i + 1)].unsqueeze(0)

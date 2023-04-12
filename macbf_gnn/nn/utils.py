@@ -1,10 +1,10 @@
-from typing import Optional
-
 import torch
-from torch import Tensor
+import torch.nn as nn
 
+from torch import Tensor
 from torch_geometric.nn.aggr import Aggregation
 from torch_geometric.utils import softmax
+from typing import Optional
 
 
 class AttentionAggregation(Aggregation):
@@ -28,3 +28,9 @@ class AttentionAggregation(Aggregation):
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}(gate_nn={self.gate_nn}, '
                 f'nn={self.nn})')
+
+
+def init_param(module: nn.Module, gain: float = 1.):
+    nn.init.orthogonal_(module.weight.data, gain=gain)
+    nn.init.constant_(module.bias.data, 0)
+    return module
