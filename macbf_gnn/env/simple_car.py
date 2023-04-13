@@ -53,11 +53,15 @@ class SimpleCar(MultiAgentEnv):
     def default_params(self) -> dict:
         return {
             'm': 1.0,  # mass of the car
-            'comm_radius': 1.0,  # communication radius
-            'car_radius': 0.05,  # radius of the cars
-            'dist2goal': 0.05,  # goal reaching threshold
-            'speed_limit': 0.4,  # maximum speed
-            'max_distance': 1.5  # maximum moving distance to goal
+            # 'comm_radius': 1.0,  # communication radius
+            # 'car_radius': 0.05,  # radius of the cars
+            # 'dist2goal': 0.05,  # goal reaching threshold
+            # 'speed_limit': 0.4,  # maximum speed
+            'max_distance': 1.5,  # maximum moving distance to goal
+            'area_size': 3.0,
+            'car_radius': 0.05,
+            'dist2goal': 0.02,
+            'comm_radius': 1.0
         }
 
     def dynamics(self, x: Tensor, u: Union[Tensor, Expression]) -> Union[Tensor, Expression]:
@@ -75,8 +79,9 @@ class SimpleCar(MultiAgentEnv):
     def reset(self) -> Data:
         self._t = 0
         # side_length = np.sqrt(max(1.0, self.num_agents / 8.0))
-        side_length = np.sqrt(self._params['car_radius'] * 10 * self.num_agents)
+        # side_length = np.sqrt(self._params['car_radius'] * 10 * self.num_agents)
         # side_length = np.sqrt(self._params['car_radius'] * (10 + 2) * 8)
+        side_length = self._params['area_size']
         states = torch.zeros(self.num_agents, 2, device=self.device)
         goals = torch.zeros(self.num_agents, 2, device=self.device)
 
