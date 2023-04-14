@@ -12,7 +12,7 @@ from collections import deque
 
 class MultiAgentEnv(ABC):
 
-    def __init__(self, num_agents: int, device: torch.device, dt: float = 0.05, params: dict = None):
+    def __init__(self, num_agents: int, device: torch.device, dt: float = 0.03, params: dict = None):
         super(MultiAgentEnv, self).__init__()
         self._num_agents = num_agents
         self._device = device
@@ -29,6 +29,9 @@ class MultiAgentEnv(ABC):
 
     def test(self):
         self._mode = 'test'
+
+    def demo(self, idx: int):
+        self._mode = f'demo_{idx}'
 
     @property
     def num_agents(self) -> int:
@@ -214,11 +217,16 @@ class MultiAgentEnv(ABC):
         pass
 
     @torch.no_grad()
-    def edge_dynamics(self, data: Data, action: Variable) -> Variable:
-        action = action + self.u_ref(data).cpu().numpy()
-        state_dot = self.dynamics(data.states, action)
-        edge_index = data.edge_index.cpu().numpy()
-        edge_dot = state_dot[edge_index[0]] - state_dot[edge_index[1]]
+    def edge_dynamics(self, data: Data, action: Union[Expression, Tensor]) -> Union[Expression, Tensor]:
+        if isinstance(action, Expression):
+            action = action + self.u_ref(data).cpu().numpy()
+            state_dot = self.dynamics(data.states, action)
+            edge_index = data.edge_index.cpu().numpy()
+            edge_dot = state_dot[edge_index[0]] - state_dot[edge_index[1]]
+        else:
+            action = action + self.u_ref(data)
+            state_dot = self.dynamics(data.states, action)
+            edge_dot = state_dot[data.edge_index[0]] - state_dot[data.edge_index[1]]
         return edge_dot
 
     @abstractmethod
@@ -371,6 +379,9 @@ class MultiAgentEnv(ABC):
             next state of the agent
         """
         xdot = self.dynamics(x, u)
+        # x_next = x + xdot * self.dt
+        # low, high = self.state_lim
+        # return torch.clamp(x_next, low, high)
         return x + xdot * self.dt
 
 

@@ -21,14 +21,18 @@ class ControllerGNN(MultiAgentController):
             action_dim=action_dim
         )
 
+        # self.feat_transformer = Sequential('x, edge_attr, edge_index', [
+        #     (ControllerGNNLayer(node_dim=node_dim, edge_dim=edge_dim, output_dim=512, phi_dim=phi_dim),
+        #      'x, edge_attr, edge_index -> x'),
+        #     nn.ReLU(),
+        #     (ControllerGNNLayer(node_dim=512, edge_dim=edge_dim, output_dim=128, phi_dim=phi_dim),
+        #      'x, edge_attr, edge_index -> x'),
+        #     nn.ReLU(),
+        #     (ControllerGNNLayer(node_dim=128, edge_dim=edge_dim, output_dim=64, phi_dim=phi_dim),
+        #      'x, edge_attr, edge_index -> x'),
+        # ])
         self.feat_transformer = Sequential('x, edge_attr, edge_index', [
-            (ControllerGNNLayer(node_dim=node_dim, edge_dim=edge_dim, output_dim=512, phi_dim=phi_dim),
-             'x, edge_attr, edge_index -> x'),
-            nn.ReLU(),
-            (ControllerGNNLayer(node_dim=512, edge_dim=edge_dim, output_dim=128, phi_dim=phi_dim),
-             'x, edge_attr, edge_index -> x'),
-            nn.ReLU(),
-            (ControllerGNNLayer(node_dim=128, edge_dim=edge_dim, output_dim=64, phi_dim=phi_dim),
+            (ControllerGNNLayer(node_dim=node_dim, edge_dim=edge_dim, output_dim=1024, phi_dim=phi_dim),
              'x, edge_attr, edge_index -> x'),
         ])
         # self.feat_transformer = Sequential('x, edge_index, edge_attr', [
@@ -41,7 +45,7 @@ class ControllerGNN(MultiAgentController):
         #     # (TransformerConv(in_channels=128, out_channels=64, edge_dim=edge_dim),
         #     #  'x, edge_index, edge_attr -> x'),
         # ])
-        self.feat_2_action = MLP(in_channels=64, out_channels=action_dim, hidden_layers=(64, 64))
+        self.feat_2_action = MLP(in_channels=1024, out_channels=action_dim, hidden_layers=(512, 128, 32))
 
     def forward(self, data: Data) -> Tensor:
         """

@@ -71,7 +71,7 @@ class Algorithm(ABC):
 
     @abstractmethod
     @torch.no_grad()
-    def step(self, data: Data) -> Tensor:
+    def step(self, data: Data, prob: float) -> Tensor:
         """
         Do one step forward in training. Different from act() by doing necessary steps for training.
 
@@ -79,6 +79,8 @@ class Algorithm(ABC):
         ----------
         data: Data,
             data of the current multi-agent map or batched data using Batch.from_data_list()
+        prob: float,
+            probability to choose the nominal controller
 
         Returns
         -------

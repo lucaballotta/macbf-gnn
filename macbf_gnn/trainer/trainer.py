@@ -58,7 +58,7 @@ class Trainer:
 
         verbose = None
         for step in tqdm(range(1, steps + 1), ncols=80):
-            action = self.algo.step(data)
+            action = self.algo.step(data, prob=1 - (step - 1) / steps)
             next_data, reward, done, info = self.env.step(action)
             if done:
                 data = self.env.reset()

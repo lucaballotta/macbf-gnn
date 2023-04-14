@@ -16,7 +16,7 @@ def make_algo(
         edge_dim: int,
         action_dim: int,
         device: torch.device,
-        batch_size: int = 500,
+        batch_size: int = 512,
         hyperparams: Optional[dict] = None
 ) -> Algorithm:
     if algo == 'nominal':

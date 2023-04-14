@@ -32,17 +32,22 @@ def test(args):
         num_agents=settings['num_agents'] if args.num_agents is None else args.num_agents,
         device=device
     )
+    # env.demo(3)
+    if args.demo is None:
+        env.test()
+    else:
+        env.demo(args.demo)
 
     # build algorithm
     algo = make_algo(
         algo=settings['algo'],
         env=env,
-        num_agents=settings['num_agents'],
+        num_agents=settings['num_agents'] if args.num_agents is None else args.num_agents,
         node_dim=env.node_dim,
         edge_dim=env.edge_dim,
         action_dim=env.action_dim,
         device=device,
-        hyperparams=settings['hyper_params']
+        hyperparams=settings['hyper_params'] if 'hyper_params' in settings.keys() else None
     )
     if args.path is None:
         assert args.env is not None and args.num_agents is not None
@@ -77,7 +82,10 @@ def test(args):
     start_time = time.time()
     results = []
     for i in range(args.epi):
-        results.append(eval_ctrl_epi(algo.act, env, np.random.randint(100000), not args.no_video))
+        print(f'epi: {i}')
+        results.append(
+            eval_ctrl_epi(algo.apply, env, np.random.randint(100000), not args.no_video, plot_edge=not args.no_edge)
+        )
     rewards, lengths, video, info = zip(*results)
     video = sum(video, ())
 
@@ -96,7 +104,9 @@ def test(args):
     if not args.no_video:
         print(f'> Making video...')
         out = cv2.VideoWriter(
-            os.path.join(video_path, f'seed{args.seed}_reward{np.mean(rewards):.2f}_safe{safe_rate}.mp4'),
+            os.path.join(
+                video_path, f'seed{args.seed}_agent{env.num_agents}_reward{np.mean(rewards):.2f}_safe{safe_rate}.mp4'
+            ),
             cv2.VideoWriter_fourcc(*'mp4v'),
             25,
             (video[-1].shape[1], video[-1].shape[0])
@@ -113,7 +123,7 @@ def test(args):
         verbose += f', safe rate: {safe_rate}'
     print(verbose)
     with open(os.path.join(args.path, 'test_log.csv'), "a") as f:
-        f.write(f'{safe_rate},{args.epi}\n')
+        f.write(f'{env.num_agents},{safe_rate},{args.epi}\n')
     print(f'> Done in {time.time() - start_time:.0f}s')
 
 
@@ -123,11 +133,13 @@ if __name__ == '__main__':
     # custom
     parser.add_argument('--path', type=str, default=None)
     parser.add_argument('-n', '--num-agents', type=int, default=None)
+    parser.add_argument('--demo', type=int, default=None)
     parser.add_argument('--env', type=str, default=None)
     parser.add_argument('--iter', type=int, default=None)
     parser.add_argument('--epi', type=int, default=5)
     parser.add_argument('--no-video', action='store_true', default=False)
     parser.add_argument('--gpu', type=int, default=0)
+    parser.add_argument('--no-edge', action='store_true', default=False)
 
     # default
     parser.add_argument('--seed', type=int, default=0)
