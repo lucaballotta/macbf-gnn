@@ -84,7 +84,7 @@ def test(args):
     for i in range(args.epi):
         print(f'epi: {i}')
         results.append(
-            eval_ctrl_epi(algo.apply, env, np.random.randint(100000), not args.no_video, plot_edge=not args.no_edge)
+            eval_ctrl_epi(algo.act, env, np.random.randint(100000), not args.no_video, plot_edge=not args.no_edge)
         )
     rewards, lengths, video, info = zip(*results)
     video = sum(video, ())

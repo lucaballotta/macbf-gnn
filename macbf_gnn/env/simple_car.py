@@ -78,7 +78,10 @@ class SimpleCars(MultiAgentEnv):
             'area_size': 3.0,
             'car_radius': 0.05,
             'dist2goal': 0.02,
-            'comm_radius': 1.0
+            'comm_radius': 1.0,
+            'buffer_size': 20,
+            'max_age': 10,
+            'poisson_coeff': .5
         }
         
         
@@ -450,8 +453,8 @@ class SimpleCar(Agent):
             
     def update_ages(self):
         for neighbor in self.neighbor_data:
-            for msg in self.neighbor_data[neighbor]:
-                msg[-1] += 1
+            for state_info in self.neighbor_data[neighbor]:
+                state_info[-1] += 1
                 
     def remove_old_data(self):
         old_neighbors = []

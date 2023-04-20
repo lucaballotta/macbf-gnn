@@ -3,7 +3,7 @@ import torch
 from .base import MultiAgentEnv
 from .simple_car import SimpleCars
 from .simple_drone import SimpleDrone
-from .drone2d import Drone2D
+# from .drone2d import Drone2D
 
 
 def make_env(env: str, num_agents: int, device: torch.device, dt: float = 0.03, params: dict = None):

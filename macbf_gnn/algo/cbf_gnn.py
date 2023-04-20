@@ -186,87 +186,89 @@ class MACBFGNN(Algorithm):
                 # calculate loss
                 eps = self.params['eps']
 
-            # unsafe region h(x) < 0
-            unsafe_mask = self._env.unsafe_mask(graphs)
-            h_unsafe = h[unsafe_mask]
-            if h_unsafe.numel():
-                max_val_unsafe = torch.relu(h_unsafe + eps)
-                loss_unsafe = torch.mean(max_val_unsafe)
-                acc_unsafe = torch.mean(torch.less(h_unsafe, 0).type_as(h_unsafe))
-                
-            else:
-                loss_unsafe = torch.tensor(0.0).type_as(h_unsafe)
-                acc_unsafe = torch.tensor(1.0).type_as(h_unsafe)
-                
-            # safe region h(x) > 0
-            safe_mask = self._env.safe_mask(graphs)
-            h_safe = h[safe_mask]
-            if h_safe.numel():
-                max_val_safe = torch.relu(-h_safe + eps)
-                loss_safe = torch.mean(max_val_safe)
-                acc_safe = torch.mean(torch.greater_equal(h_safe, 0).type_as(h_safe))
-                
-            else:
-                loss_safe = torch.tensor(0.0).type_as(h_unsafe)
-                acc_safe = torch.tensor(1.0).type_as(h_unsafe)
-                
-            # derivative loss h_dot + \alpha h > 0
-            # mask out the agents with no links at time t
-            degree = torch_geometric.utils.degree(graphs.edge_index[0], graphs.num_nodes)
-            agents_with_link = torch.nonzero(degree)
-            degree_mask = torch.zeros_like(h)
-            degree_mask = degree_mask.scatter_(0, agents_with_link, 1).bool()[:, 0]
-            # h_dot_mask = degree_mask * safe_mask
-            h_dot_mask = degree_mask
+                # unsafe region h(x) < 0
+                unsafe_mask = self._env.unsafe_mask(graphs)
+                h_unsafe = h[unsafe_mask]
+                if h_unsafe.numel():
+                    max_val_unsafe = torch.relu(h_unsafe + eps)
+                    loss_unsafe = torch.mean(max_val_unsafe)
+                    acc_unsafe = torch.mean(torch.less(h_unsafe, 0).type_as(h_unsafe))
+                    
+                else:
+                    loss_unsafe = torch.tensor(0.0).type_as(h_unsafe)
+                    acc_unsafe = torch.tensor(1.0).type_as(h_unsafe)
+                    
+                # safe region h(x) > 0
+                safe_mask = self._env.safe_mask(graphs)
+                h_safe = h[safe_mask]
+                if h_safe.numel():
+                    max_val_safe = torch.relu(-h_safe + eps)
+                    loss_safe = torch.mean(max_val_safe)
+                    acc_safe = torch.mean(torch.greater_equal(h_safe, 0).type_as(h_safe))
+                    
+                else:
+                    loss_safe = torch.tensor(0.0).type_as(h_unsafe)
+                    acc_safe = torch.tensor(1.0).type_as(h_unsafe)
+                    
+                # derivative loss h_dot + \alpha h > 0
+                # mask out the agents with no links at time t
+                '''degree = torch_geometric.utils.degree(graphs.edge_index[0], graphs.num_nodes)
+                agents_with_link = torch.nonzero(degree)
+                degree_mask = torch.zeros_like(h)
+                degree_mask = degree_mask.scatter_(0, agents_with_link, 1).bool()[:, 0]
+                # h_dot_mask = degree_mask * safe_mask
+                h_dot_mask = degree_mask
 
-            actions = self.actor(graphs)
-            graphs_next = self._env.forward_graph(graphs, actions)
-            h_next = self.cbf(graphs_next)[h_dot_mask]
-            graphs_next_new_link = []
-            for i_graph, this_graph in enumerate(graph_list):
-                this_graph_next = self._env.forward_graph(
-                    this_graph, actions[i_graph * self.num_agents: (i_graph + 1) * self.num_agents])
-                graphs_next_new_link.append(self._env.add_communication_links(this_graph_next))
-            graphs_next_new_link = Batch.from_data_list(graphs_next_new_link)
-            h_next_new_link = self.cbf(graphs_next_new_link)[h_dot_mask]
-            h_dot = (h_next - h[h_dot_mask]) / self._env.dt
-            h_dot_new_link = (h_next_new_link - h[h_dot_mask]) / self._env.dt
-            residue = (h_dot_new_link - h_dot).clone().detach()
-            h_dot = residue + h_dot
+                h_next = self.cbf(graphs_next)[h_dot_mask]
+                graphs_next_new_link = []
+                for i_graph, this_graph in enumerate(graph_list):
+                    this_graph_next = self._env.forward_graph(
+                        this_graph, actions[i_graph * self.num_agents: (i_graph + 1) * self.num_agents])
+                    graphs_next_new_link.append(self._env.add_communication_links(this_graph_next))
+                graphs_next_new_link = Batch.from_data_list(graphs_next_new_link)
+                h_next_new_link = self.cbf(graphs_next_new_link)[h_dot_mask]
+                h_dot = (h_next - h[h_dot_mask]) / self._env.dt
+                h_dot_new_link = (h_next_new_link - h[h_dot_mask]) / self._env.dt
+                residue = (h_dot_new_link - h_dot).clone().detach()
+                h_dot = residue + h_dot'''
 
-            max_val_h_dot = torch.relu((-h_dot - self.params['alpha'] * h[h_dot_mask] + eps))
-            loss_h_dot = torch.mean(max_val_h_dot)
-            acc_h_dot = torch.mean(torch.greater_equal((h_dot + self.params['alpha'] * h[agents_with_link]), 0).type_as(h_dot))
+                actions = self.actor(graphs)
+                graphs_next = self._env.forward_graph(graphs, actions)
+                h_next = self.cbf(graphs_next)
+                h_dot = (h_next - h) / self._env.dt
+                max_val_h_dot = torch.relu((-h_dot - self.params['alpha'] * h + eps))
+                loss_h_dot = torch.mean(max_val_h_dot)
+                acc_h_dot = torch.mean(torch.greater_equal((h_dot + self.params['alpha'] * h), 0).type_as(h_dot))
 
-            # action loss
-            loss_action = torch.mean(torch.square(actions).sum(dim=1))
+                # action loss
+                loss_action = torch.mean(torch.square(actions).sum(dim=1))
 
-            # backpropagation
-            loss = self.params['loss_unsafe_coef'] * loss_unsafe + \
-                   self.params['loss_safe_coef'] * loss_safe + \
-                   self.params['loss_h_dot_coef'] * loss_h_dot + \
-                   self.params['loss_action_coef'] * loss_action
+                # backpropagation
+                loss = self.params['loss_unsafe_coef'] * loss_unsafe + \
+                    self.params['loss_safe_coef'] * loss_safe + \
+                    self.params['loss_h_dot_coef'] * loss_h_dot + \
+                    self.params['loss_action_coef'] * loss_action
 
-            if loss > 100:
-                aaa = 0
-            self.optim_cbf.zero_grad(set_to_none=True)
-            self.optim_actor.zero_grad(set_to_none=True)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.cbf.parameters(), 1e-3)
-            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1e-3)
-            self.optim_cbf.step()
-            self.optim_actor.step()
+                if loss > 100:
+                    aaa = 0
+                self.optim_cbf.zero_grad(set_to_none=True)
+                self.optim_actor.zero_grad(set_to_none=True)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.cbf.parameters(), 1e-3)
+                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1e-3)
+                self.optim_cbf.step()
+                self.optim_actor.step()
 
-            # save loss
-            writer.add_scalar('loss/unsafe', loss_unsafe.item(), step * self.params['inner_iter'] + i_inner)
-            writer.add_scalar('loss/safe', loss_safe.item(), step * self.params['inner_iter'] + i_inner)
-            writer.add_scalar('loss/derivative', loss_h_dot.item(), step * self.params['inner_iter'] + i_inner)
-            writer.add_scalar('loss/action', loss_action.item(), step * self.params['inner_iter'] + i_inner)
+                # save loss
+                writer.add_scalar('loss/unsafe', loss_unsafe.item(), step * self.params['inner_iter'] + i_inner)
+                writer.add_scalar('loss/safe', loss_safe.item(), step * self.params['inner_iter'] + i_inner)
+                writer.add_scalar('loss/derivative', loss_h_dot.item(), step * self.params['inner_iter'] + i_inner)
+                writer.add_scalar('loss/action', loss_action.item(), step * self.params['inner_iter'] + i_inner)
 
-            # save accuracy
-            writer.add_scalar('acc/unsafe', acc_unsafe.item(), step * self.params['inner_iter'] + i_inner)
-            writer.add_scalar('acc/safe', acc_safe.item(), step * self.params['inner_iter'] + i_inner)
-            writer.add_scalar('acc/derivative', acc_h_dot.item(), step * self.params['inner_iter'] + i_inner)
+                # save accuracy
+                writer.add_scalar('acc/unsafe', acc_unsafe.item(), step * self.params['inner_iter'] + i_inner)
+                writer.add_scalar('acc/safe', acc_safe.item(), step * self.params['inner_iter'] + i_inner)
+                writer.add_scalar('acc/derivative', acc_h_dot.item(), step * self.params['inner_iter'] + i_inner)
 
         # merge the current buffer to the memory
         self.memory.merge(self.buffer)
