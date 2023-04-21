@@ -84,7 +84,11 @@ class ControllerGNNLayer(MessagePassing):
         return self.propagate(edge_index, x=x, edge_attr=edge_attr)
 
     def message(self, x_j: Tensor, x_i: Tensor = None, edge_attr: Tensor = None) -> Tensor:
-        output, _ = self.predictor(edge_attr)
+        try:
+            output, _ = self.predictor(edge_attr)
+        except AttributeError:
+            print('edge_attr', edge_attr)
+            
         padded_output = pad_packed_sequence(output, batch_first=True)
         pred = padded_output[0]
         lengths = padded_output[1]

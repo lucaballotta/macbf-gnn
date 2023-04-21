@@ -140,15 +140,14 @@ class MACBFGNN(Algorithm):
 
     @torch.no_grad()
     def step(self, data: Data, prob: float) -> Tensor:
-        action = self.actor(data)
-        if np.random.rand() < prob:
-            action = torch.zeros_like(action)
         is_safe = True
         if torch.any(self._env.unsafe_mask(data)):
             is_safe = not is_safe
             
         self.buffer.append(data, is_safe)
         action = self.act(data)
+        if np.random.rand() < prob:
+            action = torch.zeros_like(action)
         
         return action
 

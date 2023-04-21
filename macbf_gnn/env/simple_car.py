@@ -248,7 +248,9 @@ class SimpleCars(MultiAgentEnv):
             states=state,
             edge_index=data.edge_index)
         edge_attr = deepcopy(data.edge_attr)
-        edge_attr.data[:,-1] += 1
+        new_ages = torch.zeros_like(edge_attr.data)
+        new_ages[:,-1] = 1
+        edge_attr._replace(data=edge_attr.data + new_ages)
         data_next.edge_attr = edge_attr
 
         return data_next
