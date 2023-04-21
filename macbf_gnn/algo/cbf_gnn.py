@@ -136,7 +136,7 @@ class MACBFGNN(Algorithm):
             return self.actor(data)
             
         else:
-            return 0
+            return torch.zeros(self.num_agents, self.action_dim)
 
     @torch.no_grad()
     def step(self, data: Data, prob: float) -> Tensor:
