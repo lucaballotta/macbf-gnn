@@ -1,3 +1,4 @@
+from copy import deepcopy
 import torch.nn as nn
 import os
 import torch
@@ -157,10 +158,10 @@ class MACBFGNN(Algorithm):
 
 
     def update(self, step: int, writer: SummaryWriter = None) -> dict:
+        print('updating net...')
         acc_safe = torch.zeros(1, dtype=torch.float)
         acc_unsafe = torch.zeros(1, dtype=torch.float)
         acc_h_dot = torch.zeros(1, dtype=torch.float)
-        acc_h_dot_lin = torch.zeros(1, dtype=torch.float)
         for i_inner in range(self.params['inner_iter']):
             
             # sample from the current buffer and the memory
@@ -197,6 +198,8 @@ class MACBFGNN(Algorithm):
                     loss_unsafe = torch.tensor(0.0).type_as(h_unsafe)
                     acc_unsafe = torch.tensor(1.0).type_as(h_unsafe)
                     
+                print('acc/unsafe', acc_unsafe)
+                    
                 # safe region h(x) > 0
                 safe_mask = self._env.safe_mask(graphs)
                 h_safe = h[safe_mask]
@@ -206,8 +209,8 @@ class MACBFGNN(Algorithm):
                     acc_safe = torch.mean(torch.greater_equal(h_safe, 0).type_as(h_safe))
                     
                 else:
-                    loss_safe = torch.tensor(0.0).type_as(h_unsafe)
-                    acc_safe = torch.tensor(1.0).type_as(h_unsafe)
+                    loss_safe = torch.tensor(0.0).type_as(h_safe)
+                    acc_safe = torch.tensor(1.0).type_as(h_safe)
                     
                 # derivative loss h_dot + \alpha h > 0
                 # mask out the agents with no links at time t
@@ -248,8 +251,6 @@ class MACBFGNN(Algorithm):
                     self.params['loss_h_dot_coef'] * loss_h_dot + \
                     self.params['loss_action_coef'] * loss_action
 
-                if loss > 100:
-                    aaa = 0
                 self.optim_cbf.zero_grad(set_to_none=True)
                 self.optim_actor.zero_grad(set_to_none=True)
                 loss.backward()
