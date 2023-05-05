@@ -24,16 +24,16 @@ def train(args):
     env_test = make_env(args.env, args.num_agents, device)
 
     # set training params
-    params = read_params(args.env)
+    params = None #read_params(args.env)
     if params is None:
         params = {  # set up custom hyper-parameters
             'alpha': 1.0,
             'eps': 0.02,
             'inner_iter': 10,
             'loss_action_coef': 0.05,
-            'loss_unsafe_coef': 1.0,
+            'loss_unsafe_coef': 1.2,
             'loss_safe_coef': 1.0,
-            'loss_h_dot_coef': 0.5
+            'loss_h_dot_coef': 0.25
         }
         print('> Using custom hyper-parameters')
     else:

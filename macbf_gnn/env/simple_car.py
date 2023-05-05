@@ -216,7 +216,7 @@ class SimpleCars(MultiAgentEnv):
         # transmit data with delays
         for car_idx, car in enumerate(self._cars):
             avg_del = np.ceil(neigh_sizes[car_idx] * self._params['poisson_coeff'])
-            delay_tx = poisson.rvs(avg_del)
+            delay_tx = 0 #poisson.rvs(avg_del)
             car.store_delay(delay_tx)
             
         # store received data

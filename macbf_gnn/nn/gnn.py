@@ -21,7 +21,7 @@ class CBFGNNLayer(MessagePassing):
             gate_nn=MLP(in_channels=phi_dim, out_channels=1, hidden_layers=(128, 128), limit_lip=False)
         ))
         self.predictor = LSTM(
-            input_size=edge_dim + 1, hidden_size=edge_dim, num_layers=1, batch_first=True
+            input_size=edge_dim + 1, hidden_size=edge_dim, num_layers=4, batch_first=True
         )
         self.phi = MLP(
             in_channels=2 * node_dim + edge_dim, out_channels=phi_dim, hidden_layers=(2048, 2048), limit_lip=True
@@ -71,7 +71,7 @@ class ControllerGNNLayer(MessagePassing):
             gate_nn=MLP(in_channels=phi_dim, out_channels=1, hidden_layers=(128, 128))
         ))
         self.predictor = LSTM(
-            input_size=edge_dim + 1, hidden_size=edge_dim, num_layers=1, batch_first=True
+            input_size=edge_dim + 1, hidden_size=edge_dim, num_layers=4, batch_first=True
         )
         self.phi = MLP(
             in_channels=2 * node_dim + edge_dim, out_channels=phi_dim, hidden_layers=(2048, 2048)

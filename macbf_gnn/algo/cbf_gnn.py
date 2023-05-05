@@ -158,7 +158,6 @@ class MACBFGNN(Algorithm):
 
 
     def update(self, step: int, writer: SummaryWriter = None) -> dict:
-        print('updating net...')
         acc_safe = torch.zeros(1, dtype=torch.float)
         acc_unsafe = torch.zeros(1, dtype=torch.float)
         acc_h_dot = torch.zeros(1, dtype=torch.float)
@@ -197,9 +196,7 @@ class MACBFGNN(Algorithm):
                 else:
                     loss_unsafe = torch.tensor(0.0).type_as(h_unsafe)
                     acc_unsafe = torch.tensor(1.0).type_as(h_unsafe)
-                    
-                print('acc/unsafe', acc_unsafe)
-                    
+                                        
                 # safe region h(x) > 0
                 safe_mask = self._env.safe_mask(graphs)
                 h_safe = h[safe_mask]
@@ -241,7 +238,7 @@ class MACBFGNN(Algorithm):
                 max_val_h_dot = torch.relu((-h_dot - self.params['alpha'] * h + eps))
                 loss_h_dot = torch.mean(max_val_h_dot)
                 acc_h_dot = torch.mean(torch.greater_equal((h_dot + self.params['alpha'] * h), 0).type_as(h_dot))
-
+                
                 # action loss
                 loss_action = torch.mean(torch.square(actions).sum(dim=1))
 
