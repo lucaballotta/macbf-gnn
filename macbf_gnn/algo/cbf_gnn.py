@@ -165,7 +165,7 @@ class MACBFGNN(Algorithm):
             
             # sample from the current buffer and the memory
             if self.memory.size == 0:
-                graph_list = self.buffer.sample(self.batch_size // 5)
+                graph_list = self.buffer.sample(self.batch_size // 5, True)
                 
             else:
                 curr_graphs = self.buffer.sample(self.batch_size // 10, True)
@@ -234,10 +234,10 @@ class MACBFGNN(Algorithm):
                 actions = self.actor(graphs)
                 graphs_next = self._env.forward_graph(graphs, actions)
                 h_next = self.cbf(graphs_next)
-                h_dot = (h_next - h) / self._env.dt
-                max_val_h_dot = torch.relu((-h_dot - self.params['alpha'] * h + eps))
+                h_dot = (h_next[safe_mask] - h[safe_mask]) / self._env.dt
+                max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h[safe_mask] + eps)
                 loss_h_dot = torch.mean(max_val_h_dot)
-                acc_h_dot = torch.mean(torch.greater_equal((h_dot + self.params['alpha'] * h), 0).type_as(h_dot))
+                acc_h_dot = torch.mean(torch.greater_equal((h_dot + self.params['alpha'] * h[safe_mask]), 0).type_as(h_dot))
                 
                 # action loss
                 loss_action = torch.mean(torch.square(actions).sum(dim=1))
@@ -272,6 +272,12 @@ class MACBFGNN(Algorithm):
         self.buffer.clear()
 
         return {
+            'loss': loss.item(),
+            'num/safe': h_safe.numel(),
+            'num/unsafe': h_unsafe.numel(),
+            'loss/safe': loss_safe.item(),
+            'loss/unsafe': loss_unsafe.item(),
+            'loss/derivative': loss_h_dot.item(),
             'acc/safe': acc_safe.item(),
             'acc/unsafe': acc_unsafe.item(),
             'acc/derivative': acc_h_dot.item(),

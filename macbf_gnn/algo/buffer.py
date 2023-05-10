@@ -85,9 +85,17 @@ class Buffer:
         else:
             index_unsafe, index_safe = [], []
             if len(self.unsafe_data) > 0:
-                index_unsafe = random.choices(self.unsafe_data, k=n // 2)
-            if len(self.unsafe_data) < 0:
-                index_safe = random.choices(self.safe_data, k=n // 2)
+                if len(self.unsafe_data) > n // 2:
+                    index_unsafe = random.choices(self.unsafe_data, k=n // 2)
+                else:
+                    index_unsafe = self.unsafe_data
+                    
+            if len(self.safe_data) > 0:
+                if len(self.safe_data) > n // 2:
+                    index_safe = random.choices(self.safe_data, k=n // 2)
+                else:
+                    index_safe = self.safe_data
+                    
             index = sorted(index_safe + index_unsafe)
 
         for i in index:
