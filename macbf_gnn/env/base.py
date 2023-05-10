@@ -12,7 +12,7 @@ from collections import deque
 
 class MultiAgentEnv(ABC):
 
-    def __init__(self, num_agents: int, device: torch.device, dt: float = 0.03, params: dict = None):
+    def __init__(self, num_agents: int, device: torch.device, dt: float = 0.03, params: dict = None, delay_aware: bool = True):
         super(MultiAgentEnv, self).__init__()
         self._num_agents = num_agents
         self._device = device
@@ -20,6 +20,7 @@ class MultiAgentEnv(ABC):
         if params is None:
             params = self.default_params
         self._params = params
+        self._delay_aware = delay_aware
         self._data = None
         self._t = 0
         self._mode = 'train'
@@ -46,6 +47,15 @@ class MultiAgentEnv(ABC):
             simulation time interval
         """
         return self._dt
+    
+    def delay_aware(self) -> bool:
+        """
+        Returns
+        -------
+        delay_aware: bool,
+            data collection mode
+        """
+        return self._delay_aware
 
     @property
     def device(self) -> torch.device:

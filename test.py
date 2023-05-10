@@ -27,10 +27,12 @@ def test(args):
         settings = {'algo': 'nominal', 'num_agents': args.num_agents}
 
     # make environment
+    delay_aware = True
     env = make_env(
         env=settings['env'] if args.env is None else args.env,
         num_agents=settings['num_agents'] if args.num_agents is None else args.num_agents,
-        device=device
+        device=device,
+        delay_aware=delay_aware
     )
     # env.demo(3)
     if args.demo is None:

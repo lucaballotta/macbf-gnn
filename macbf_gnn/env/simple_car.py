@@ -19,8 +19,8 @@ from .base import Agent, MultiAgentEnv
 
 class SimpleCars(MultiAgentEnv):
 
-    def __init__(self, num_agents: int, device: torch.device, dt: float = 0.05, params: dict = None):
-        super(SimpleCars, self).__init__(num_agents, device, dt, params)
+    def __init__(self, num_agents: int, device: torch.device, dt: float = 0.05, params: dict = None, delay_aware: bool = True):
+        super(SimpleCars, self).__init__(num_agents, device, dt, params, delay_aware)
         
         # state trajectory
         self._states = deque(maxlen=self._params['buffer_size'])
@@ -193,6 +193,9 @@ class SimpleCars(MultiAgentEnv):
         # simulate transmission of delayed data among cars
         self.transmit_data(neigh_sizes)
         
+        # simulate data reception at cars
+        self.receive_data()
+        
         # store current edge attributes with received delayed data
         self._data = self.add_edge_attributes(data)
         
@@ -211,15 +214,14 @@ class SimpleCars(MultiAgentEnv):
         return self.data, float(reward), done, {'safe': safe}
     
     
-    def transmit_data(self, neigh_sizes):
-        
-        # transmit data with delays
+    def transmit_data(self, neigh_sizes):        
         for car_idx, car in enumerate(self._cars):
             avg_del = np.ceil(neigh_sizes[car_idx] * self._params['poisson_coeff'])
             delay_tx = poisson.rvs(avg_del)
             car.store_delay(delay_tx)
             
-        # store received data
+
+    def receive_data(self):
         for idx_car, car in enumerate(self._cars):
             neighbors_list, delay_list = car.data_delivered()
             for idx_neighbors, neighbors in enumerate(neighbors_list):
@@ -227,8 +229,8 @@ class SimpleCars(MultiAgentEnv):
                 for neighbor in neighbors:
                     state_diff = self._states[-delay_rec - 1][idx_car] - self._states[-delay_rec - 1][neighbor]
                     stored, idx = self._cars[neighbor].store_data(
-                        idx_car, state_diff, delay_rec)
-                    if stored:
+                        idx_car, state_diff, delay_rec, self.delay_aware)
+                    if stored and self.delay_aware:
                         self._cars[neighbor].store_states(
                             self._states[-delay_rec - 1][neighbor], idx_car, self._states[-delay_rec - 1][idx_car], idx)
 
@@ -331,8 +333,10 @@ class SimpleCars(MultiAgentEnv):
                 
         data.edge_index = torch.tensor(edge_index, dtype=torch.long)
         if len(edge_attr) > 0:
-            data.edge_attr = pack_sequence(edge_attr, enforce_sorted=False)
-            
+            if self.delay_aware:
+                data.edge_attr = pack_sequence(edge_attr, enforce_sorted=False)
+            else:
+                data.edge_attr = torch.cat(edge_attr)
         else:
             data.edge_attr = edge_attr
                     
@@ -416,28 +420,34 @@ class SimpleCar(Agent):
     def __init__(self, buffer_size, max_age):
         super().__init__(buffer_size, max_age)
         
-    def store_data(self, neighbor: int, data: Tensor, delay: int) -> Tuple[bool, int]:
-        stored = False
-        idx = None
-        if delay <= self.max_age:
-            stored = True
-            data = torch.reshape(data, (-1,))
-            new_data = torch.unsqueeze(torch.cat((data, torch.tensor([delay]))), 0)
-            if neighbor not in self._neighbor_data:
-                self._neighbor_data[neighbor] = new_data
-                
-            else:
-                
-                # insertionSort: oldest data first
-                idx = 0
-                while self._neighbor_data[neighbor][idx][-1] > delay:
-                    idx += 1
-                    if idx == len(self._neighbor_data[neighbor]):
-                        break
+    def store_data(self, neighbor: int, data: Tensor, delay: int, delay_aware: bool) -> Tuple[bool, int]:
+        if delay_aware:
+            stored = False
+            idx = None
+            if delay <= self.max_age:
+                stored = True
+                data = torch.reshape(data, (-1,))
+                new_data = torch.unsqueeze(torch.cat((data, torch.tensor([delay]))), 0)
+                if neighbor not in self._neighbor_data:
+                    self._neighbor_data[neighbor] = new_data
+                    
+                else:
+                    
+                    # insertionSort: oldest data first
+                    idx = 0
+                    while self._neighbor_data[neighbor][idx][-1] > delay:
+                        idx += 1
+                        if idx == len(self._neighbor_data[neighbor]):
+                            break
 
-                previous_data = self._neighbor_data[neighbor]
-                self._neighbor_data[neighbor] = torch.cat(
-                    (previous_data[:idx], new_data, previous_data[idx:]))
+                    previous_data = self._neighbor_data[neighbor]
+                    self._neighbor_data[neighbor] = torch.cat(
+                        (previous_data[:idx], new_data, previous_data[idx:]))
+                    
+        else:
+            stored = True
+            idx = 0
+            self._neighbor_data[neighbor] = data
         
         return stored, idx
     
