@@ -467,13 +467,13 @@ class Agent(ABC):
         pass
     
     @abstractmethod
-    def store_states(self, agent_state: Tensor, neighbor: int, neighbor_state: Tensor, idx: int):
+    def store_states(self, self_state: Tensor, neighbor: int, neighbor_state: Tensor, idx: int):
         """
         Store states that have been received from neighbors at the current time step.
 
         Parameters
         ----------
-        agent_state: Tensor (state_dim),
+        self_state: Tensor (state_dim),
             state of agent at past time corresponding to neighbor_state
         neighbor: int,
             index of the neighbor

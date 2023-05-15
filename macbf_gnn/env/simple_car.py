@@ -79,8 +79,8 @@ class SimpleCars(MultiAgentEnv):
             'car_radius': 0.05,
             'dist2goal': 0.02,
             'comm_radius': 1.0,
-            'buffer_size': 20,
-            'max_age': 10,
+            'buffer_size': 1,
+            'max_age': 2,
             'poisson_coeff': .2
         }
         
@@ -158,6 +158,12 @@ class SimpleCars(MultiAgentEnv):
         # simulate transmission of delayed data among cars
         self.transmit_data(neigh_sizes)
         
+        # simulate data reception at cars
+        self.receive_data()
+        
+        # remove neighbors with age older than maximum allowed
+        [car.remove_old_data() for car in self._cars]
+        
         # store current edge attributes with received delayed data
         self._data = self.add_edge_attributes(data)
 
@@ -196,11 +202,11 @@ class SimpleCars(MultiAgentEnv):
         # simulate data reception at cars
         self.receive_data()
         
+        # remove neighbors with age older than maximum allowed
+        [car.remove_old_data() for car in self._cars]
+        
         # store current edge attributes with received delayed data
         self._data = self.add_edge_attributes(data)
-        
-        # remove neighbors with age older than maximum allowed        
-        [car.remove_old_data() for car in self._cars]
         
         # the episode ends when reaching max_episode_steps or all the agents reach the goal
         time_up = self._t >= self.max_episode_steps
@@ -217,7 +223,7 @@ class SimpleCars(MultiAgentEnv):
     def transmit_data(self, neigh_sizes):        
         for car_idx, car in enumerate(self._cars):
             avg_del = np.ceil(neigh_sizes[car_idx] * self._params['poisson_coeff'])
-            delay_tx = poisson.rvs(avg_del)
+            delay_tx = 0 #poisson.rvs(avg_del)
             car.store_delay(delay_tx)
             
 
@@ -230,10 +236,10 @@ class SimpleCars(MultiAgentEnv):
                     state_diff = self._states[-delay_rec - 1][idx_car] - self._states[-delay_rec - 1][neighbor]
                     stored, idx = self._cars[neighbor].store_data(
                         idx_car, state_diff, delay_rec, self.delay_aware)
-                    if stored and self.delay_aware:
-                        self._cars[neighbor].store_states(
-                            self._states[-delay_rec - 1][neighbor], idx_car, self._states[-delay_rec - 1][idx_car], idx)
-
+                    # if stored and self.delay_aware:
+                    #     self._cars[neighbor].store_states(
+                    #         self._states[-delay_rec - 1][neighbor], idx_car, self._states[-delay_rec - 1][idx_car], idx)
+                    
 
     def forward_graph(self, data: Data, action: Tensor) -> Data:
         
@@ -249,12 +255,12 @@ class SimpleCars(MultiAgentEnv):
             pos=state[:, :2],
             states=state,
             edge_index=data.edge_index)
-        edge_attr = deepcopy(data.edge_attr)
-        new_ages = torch.zeros_like(edge_attr.data)
-        new_ages[:,-1] = 1
-        edge_attr._replace(data=edge_attr.data + new_ages)
+        age_step = torch.zeros_like(data.edge_attr.data)
+        age_step[:,-1] = 1
+        edge_attr = data.edge_attr._replace(data=data.edge_attr.data + age_step)
+        edge_attr.requires_grad = True
         data_next.edge_attr = edge_attr
-
+        
         return data_next
     
     
@@ -332,14 +338,19 @@ class SimpleCars(MultiAgentEnv):
                 edge_attr.append(car.neighbor_data[neighbor])
                 
         data.edge_index = torch.tensor(edge_index, dtype=torch.long)
-        if len(edge_attr) > 0:
-            if self.delay_aware:
-                data.edge_attr = pack_sequence(edge_attr, enforce_sorted=False)
-            else:
-                data.edge_attr = torch.cat(edge_attr)
-        else:
-            data.edge_attr = edge_attr
-                    
+        data.edge_attr = edge_attr
+        
+        # if len(edge_attr) > 0:
+        #     if self.delay_aware:
+        #         data.edge_attr = pack_sequence(edge_attr, enforce_sorted=False)
+        #     else:
+        #         data.edge_attr = torch.cat(edge_attr)
+        # else:
+        #     data.edge_attr = edge_attr
+            
+        # store true state differences
+        data.state_diff = data.states[data.edge_index[0]] - data.states[data.edge_index[1]]
+        
         return data
 
 
@@ -427,9 +438,9 @@ class SimpleCar(Agent):
             if delay <= self.max_age:
                 stored = True
                 data = torch.reshape(data, (-1,))
-                new_data = torch.unsqueeze(torch.cat((data, torch.tensor([delay]))), 0)
+                data = torch.unsqueeze(torch.cat((data, torch.tensor([delay]))), 0)
                 if neighbor not in self._neighbor_data:
-                    self._neighbor_data[neighbor] = new_data
+                    self._neighbor_data[neighbor] = data
                     
                 else:
                     
@@ -442,7 +453,7 @@ class SimpleCar(Agent):
 
                     previous_data = self._neighbor_data[neighbor]
                     self._neighbor_data[neighbor] = torch.cat(
-                        (previous_data[:idx], new_data, previous_data[idx:]))
+                        (previous_data[:idx], data, previous_data[idx:]))
                     
         else:
             stored = True
@@ -451,10 +462,10 @@ class SimpleCar(Agent):
         
         return stored, idx
     
-    def store_states(self, agent_state: Tensor, neighbor: int, neighbor_state: Tensor, idx: int):
-        agent_state = torch.reshape(agent_state, (-1,))
+    def store_states(self, self_state: Tensor, neighbor: int, neighbor_state: Tensor, idx: int):
+        self_state = torch.reshape(self_state, (-1,))
         neighbor_state = torch.reshape(neighbor_state, (-1,))
-        new_data = torch.unsqueeze(torch.stack((agent_state, neighbor_state)), 0)
+        new_data = torch.unsqueeze(torch.stack((self_state, neighbor_state)), 0)
         if neighbor not in self._past_states:
             self._past_states[neighbor] = new_data
             

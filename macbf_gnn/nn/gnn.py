@@ -20,9 +20,9 @@ class CBFGNNLayer(MessagePassing):
         super(CBFGNNLayer, self).__init__(aggr=AttentionalAggregation(
             gate_nn=MLP(in_channels=phi_dim, out_channels=1, hidden_layers=(128, 128), limit_lip=False)
         ))
-        self.predictor = LSTM(
-            input_size=edge_dim + 1, hidden_size=edge_dim, num_layers=4, batch_first=True
-        )
+        # self.predictor = LSTM(
+        #     input_size=edge_dim + 1, hidden_size=edge_dim, num_layers=4, batch_first=True
+        # )
         self.phi = MLP(
             in_channels=2 * node_dim + edge_dim, out_channels=phi_dim, hidden_layers=(2048, 2048), limit_lip=True
         )
@@ -34,12 +34,12 @@ class CBFGNNLayer(MessagePassing):
         return self.propagate(edge_index, x=x, edge_attr=edge_attr)
 
     def message(self, x_j: Tensor, x_i: Tensor = None, edge_attr: Tensor = None) -> Tensor:
-        output, _ = self.predictor(edge_attr)
-        padded_output = pad_packed_sequence(output, batch_first=True)
-        pred = padded_output[0]
-        lengths = padded_output[1]
-        pred_last = pred[np.arange(len(pred)), lengths - 1]
-        info_ij = cat([x_i, x_j, pred_last], dim=1)
+        # output, _ = self.predictor(edge_attr)
+        # padded_output = pad_packed_sequence(output, batch_first=True)
+        # pred = padded_output[0]
+        # lengths = padded_output[1]
+        # pred_last = pred[np.arange(len(pred)), lengths - 1]
+        info_ij = cat([x_i, x_j, edge_attr], dim=1)
         return self.phi(info_ij)
 
     def update(self, aggr_out: Tensor, x: Tensor = None) -> Tensor:
@@ -70,9 +70,9 @@ class ControllerGNNLayer(MessagePassing):
         super(ControllerGNNLayer, self).__init__(aggr=AttentionalAggregation(
             gate_nn=MLP(in_channels=phi_dim, out_channels=1, hidden_layers=(128, 128))
         ))
-        self.predictor = LSTM(
-            input_size=edge_dim + 1, hidden_size=edge_dim, num_layers=4, batch_first=True
-        )
+        # self.predictor = LSTM(
+        #     input_size=edge_dim + 1, hidden_size=edge_dim, num_layers=4, batch_first=True
+        # )
         self.phi = MLP(
             in_channels=2 * node_dim + edge_dim, out_channels=phi_dim, hidden_layers=(2048, 2048)
         )
@@ -84,12 +84,12 @@ class ControllerGNNLayer(MessagePassing):
         return self.propagate(edge_index, x=x, edge_attr=edge_attr)
 
     def message(self, x_j: Tensor, x_i: Tensor = None, edge_attr: Tensor = None) -> Tensor:
-        output, _ = self.predictor(edge_attr)
-        padded_output = pad_packed_sequence(output, batch_first=True)
-        pred = padded_output[0]
-        lengths = padded_output[1]
-        pred_last = pred[np.arange(len(pred)), lengths - 1]
-        info_ij = cat([x_i, x_j, pred_last], dim=1)
+        # output, _ = self.predictor(edge_attr)
+        # padded_output = pad_packed_sequence(output, batch_first=True)
+        # pred = padded_output[0]
+        # lengths = padded_output[1]
+        # pred_last = pred[np.arange(len(pred)), lengths - 1]
+        info_ij = cat([x_i, x_j, edge_attr], dim=1)
         return self.phi(info_ij)
 
     def update(self, aggr_out: Tensor, x: Tensor = None) -> Tensor:

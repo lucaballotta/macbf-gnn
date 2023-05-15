@@ -20,8 +20,9 @@ def train(args):
     print(f'> Training with {device}')
 
     # make environment
-    env = make_env(args.env, args.num_agents, device)
-    env_test = make_env(args.env, args.num_agents, device)
+    delay_aware = True
+    env = make_env(args.env, args.num_agents, device, delay_aware=delay_aware)
+    env_test = make_env(args.env, args.num_agents, device, delay_aware=delay_aware)
 
     # set training params
     params = None #read_params(args.env)
@@ -31,6 +32,7 @@ def train(args):
             'eps': 0.02,
             'inner_iter': 10,
             'loss_action_coef': 0.05,
+            'loss_pred_coef': 1.,            
             'loss_unsafe_coef': 1.5,
             'loss_safe_coef': 1.5,
             'loss_h_dot_coef': 0.6
