@@ -85,8 +85,7 @@ class MACBFGNN(Algorithm):
 
         # models
         self.predictor = Predictor(
-            edge_dim=self.edge_dim,
-            num_layers=4
+            edge_dim=self.edge_dim
         ).to(device)
         self.cbf = CBFGNN(
             num_agents=self.num_agents,
@@ -184,7 +183,7 @@ class MACBFGNN(Algorithm):
                 # get current state difference predictions
                 pred_state_diff = self.predictor(batched_edge_attr)
                 true_state_diff = graphs.state_diff
-                loss_pred = torch.norm(pred_state_diff - true_state_diff)
+                loss_pred = torch.mean(torch.square(pred_state_diff - true_state_diff).sum(dim=1))
                 
                 # get CBF values and the control inputs
                 cbf_input_data = Data(
@@ -259,12 +258,11 @@ class MACBFGNN(Algorithm):
                 loss_action = torch.mean(torch.square(actions).sum(dim=1))
 
                 # backpropagation
-                loss = loss_pred
-                # loss = self.params['loss_pred_coef'] * loss_pred +\
-                #     self.params['loss_unsafe_coef'] * loss_unsafe + \
-                #     self.params['loss_safe_coef'] * loss_safe + \
-                #     self.params['loss_h_dot_coef'] * loss_h_dot + \
-                #     self.params['loss_action_coef'] * loss_action
+                loss = self.params['loss_pred_coef'] * loss_pred + \
+                    self.params['loss_unsafe_coef'] * loss_unsafe + \
+                    self.params['loss_safe_coef'] * loss_safe + \
+                    self.params['loss_h_dot_coef'] * loss_h_dot + \
+                    self.params['loss_action_coef'] * loss_action
 
                 self.optim_predictor.zero_grad(set_to_none=True)
                 self.optim_cbf.zero_grad(set_to_none=True)
@@ -295,43 +293,23 @@ class MACBFGNN(Algorithm):
 
         return {
             'loss': loss.item(),
-            # 'loss/safe': loss_safe.item(),
-            # 'loss/unsafe': loss_unsafe.item(),
-            # 'loss/derivative': loss_h_dot.item(),
-            # 'loss/prediction': loss_pred.item(),
-            # 'acc/safe': acc_safe.item(),
-            # 'acc/unsafe': acc_unsafe.item(),
-            # 'acc/derivative': acc_h_dot.item(),
+            'loss/safe': loss_safe.item(),
+            'loss/unsafe': loss_unsafe.item(),
+            'loss/derivative': loss_h_dot.item(),
+            'loss/prediction': loss_pred.item(),
+            'acc/safe': acc_safe.item(),
+            'acc/unsafe': acc_unsafe.item(),
+            'acc/derivative': acc_h_dot.item(),
         }
         
         
     def batch_edge_attr(self, graph_list):
-        # max_len = 0
-        # for graph in graph_list:
-        #     max_len = max(max_len, len(graph.edge_attr.batch_sizes))
-            
         edge_attrs = []
-        edge_attr_lens = []
-        
         for graph in graph_list:
-            # (edge_attr_graph, edge_attr_lens_graph) = pad_packed_sequence(
-            #     graph.edge_attr, batch_first=True) #, total_length=max_len)
-            # edge_attr_lens_graph = edge_attr_lens_graph.to(self.device)
             edge_attrs.extend(graph.edge_attr)
-            # edge_attr_lens.extend(edge_attr_lens_graph)
-            
-        # edge_attrs = torch.cat(edge_attrs)
-        # edge_attr_lens = torch.cat(edge_attr_lens)
-        # batched_edge_attr = pack_padded_sequence(
-        #     edge_attrs, edge_attr_lens, batch_first=True, enforce_sorted=False)
-        
-        # for graph in graph_list:
-        #     (sequence_graph, sequence_lens_graph) = unpack_sequence(graph.edge_attr)
-        #     edge_attrs.append(sequence_graph)
-        #     edge_attr_lens.append(sequence_lens_graph)
         
         batched_edge_attr = pack_sequence(edge_attrs, enforce_sorted=False)
-                            
+        
         return batched_edge_attr
                 
                 

@@ -5,3 +5,4 @@ token-github.txt
 .DS_Store
 wandb/
 records
+test_lstm.py
