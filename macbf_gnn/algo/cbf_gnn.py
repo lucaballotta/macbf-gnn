@@ -133,7 +133,7 @@ class MACBFGNN(Algorithm):
             data_pred = Data(
                 x=data.x,
                 edge_index=data.edge_index,
-                edge_attr = self.predictor(data.edge_attr)
+                edge_attr=self.predictor(data.edge_attr)
             )
             return self.actor(data_pred)
             
@@ -158,7 +158,7 @@ class MACBFGNN(Algorithm):
         return step % self.batch_size == 0
 
 
-    def update(self, step: int, writer: SummaryWriter = None) -> dict:
+    def update(self, step: int, train_ctrl : bool, writer: SummaryWriter = None) -> dict:
         acc_safe = torch.zeros(1, dtype=torch.float)
         acc_unsafe = torch.zeros(1, dtype=torch.float)
         acc_h_dot = torch.zeros(1, dtype=torch.float)
@@ -183,7 +183,7 @@ class MACBFGNN(Algorithm):
                 # get current state difference predictions
                 pred_state_diff = self.predictor(batched_edge_attr)
                 true_state_diff = graphs.state_diff
-                loss_pred = torch.mean(torch.square(pred_state_diff - true_state_diff).sum(dim=1))
+                loss_pred = torch.mean(torch.square((pred_state_diff - true_state_diff).sum(dim=1) / torch.norm(true_state_diff, dim=1)))
                 
                 # get CBF values and the control inputs
                 cbf_input_data = Data(
@@ -258,12 +258,18 @@ class MACBFGNN(Algorithm):
                 loss_action = torch.mean(torch.square(actions).sum(dim=1))
 
                 # backpropagation
-                loss = self.params['loss_pred_coef'] * loss_pred + \
-                    self.params['loss_unsafe_coef'] * loss_unsafe + \
+                # if not train_ctrl:
+                # self.optim_predictor.zero_grad(set_to_none=True)
+                # loss_pred.backward()
+                # torch.nn.utils.clip_grad_norm_(self.predictor.parameters(), 1e-3)
+                # self.optim_predictor.step()
+                
+                # else:
+                loss = self.params['loss_unsafe_coef'] * loss_unsafe + \
                     self.params['loss_safe_coef'] * loss_safe + \
                     self.params['loss_h_dot_coef'] * loss_h_dot + \
-                    self.params['loss_action_coef'] * loss_action
-
+                    self.params['loss_action_coef'] * loss_action + \
+                    self.params['loss_pred_coef'] * loss_pred
                 self.optim_predictor.zero_grad(set_to_none=True)
                 self.optim_cbf.zero_grad(set_to_none=True)
                 self.optim_actor.zero_grad(set_to_none=True)
@@ -271,7 +277,7 @@ class MACBFGNN(Algorithm):
                 torch.nn.utils.clip_grad_norm_(self.predictor.parameters(), 1e-3)
                 torch.nn.utils.clip_grad_norm_(self.cbf.parameters(), 1e-3)
                 torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1e-3)
-                self.optim_predictor.step()
+                self.optim_predictor.step() 
                 self.optim_cbf.step()
                 self.optim_actor.step()
 
@@ -292,11 +298,10 @@ class MACBFGNN(Algorithm):
         self.buffer.clear()
 
         return {
-            'loss': loss.item(),
+            'loss/prediction': loss_pred.item(),
             'loss/safe': loss_safe.item(),
             'loss/unsafe': loss_unsafe.item(),
             'loss/derivative': loss_h_dot.item(),
-            'loss/prediction': loss_pred.item(),
             'acc/safe': acc_safe.item(),
             'acc/unsafe': acc_unsafe.item(),
             'acc/derivative': acc_h_dot.item(),

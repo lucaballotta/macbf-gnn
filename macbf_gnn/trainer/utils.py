@@ -14,7 +14,7 @@ from torch import Tensor
 from tqdm import tqdm
 
 from macbf_gnn.env import MultiAgentEnv
-from macbf_gnn.algo.cbf_gnn import CBFGNN
+from macbf_gnn.algo.cbf_gnn import CBFGNN, Predictor
 
 
 def set_seed(seed: int):

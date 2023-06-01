@@ -130,7 +130,7 @@ class Algorithm(ABC):
         pass
 
     @abstractmethod
-    def update(self, step: int, writer: SummaryWriter = None) -> dict:
+    def update(self, step: int, flag_ctrl: bool, writer: SummaryWriter = None) -> dict:
         """
         Update the models
 
@@ -138,6 +138,8 @@ class Algorithm(ABC):
         ----------
         step: int,
             current training step
+        flag_ctrl: bool,
+            true if CBF and controller to be updated
         writer: SummaryWriter,
             writer for the logs
         """

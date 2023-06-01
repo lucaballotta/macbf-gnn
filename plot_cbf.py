@@ -4,6 +4,8 @@ import argparse
 import matplotlib.pyplot as plt
 import shutil
 
+from torch_geometric.data import Data
+
 from macbf_gnn.trainer.utils import set_seed, read_settings, plot_cbf_contour
 from macbf_gnn.env import make_env
 from macbf_gnn.algo import make_algo
@@ -70,13 +72,20 @@ def plot_cbf(args):
         t = 0
         os.mkdir(os.path.join(fig_path, f'epi_{i_epi}'))
         while True:
-            action = algo.apply(data)
+            action = algo.act(data)
 
             if hasattr(algo, 'cbf'):
                 action_real = action + env.u_ref(data)
+                input_data = Data(
+                    x=data.x,
+                    states=data.states,
+                    pos=data.pos,
+                    edge_index=data.edge_index,
+                    edge_attr=algo.predictor(data.edge_attr)
+                )
                 ax = plot_cbf_contour(
-                    algo.cbf, data, env, args.agent, args.x_dim, args.y_dim, action_real[args.agent, :], True)
-                ax.text(0., 0.93, f'CBF: {algo.cbf(data)[args.agent].cpu().detach().numpy()[0]:.3f}', transform=ax.transAxes, fontsize=14)
+                    algo.cbf, input_data, env, args.agent, args.x_dim, args.y_dim, action_real[args.agent, :], True)
+                ax.text(0., 0.93, f'CBF: {algo.cbf(input_data)[args.agent].cpu().detach().numpy()[0]:.3f}', transform=ax.transAxes, fontsize=14)
                 # h_prev = algo.cbf(data)
                 # h_post = algo.cbf(next_data)
                 # h_deriv = (h_post - h_prev) / env.dt + algo.params['alpha'] * h_prev

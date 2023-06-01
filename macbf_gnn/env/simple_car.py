@@ -73,7 +73,7 @@ class SimpleCars(MultiAgentEnv):
             # 'comm_radius': 1.0,  # communication radius
             # 'car_radius': 0.05,  # radius of the cars
             # 'dist2goal': 0.05,  # goal reaching threshold
-            # 'speed_limit': 0.4,  # maximum speed
+            'speed_limit': 0.4,  # maximum speed
             'max_distance': 1.5,  # maximum moving distance to goal
             'area_size': 3.0,
             'car_radius': 0.05,
@@ -81,7 +81,7 @@ class SimpleCars(MultiAgentEnv):
             'comm_radius': 1.0,
             'buffer_size': 1,
             'max_age': 2,
-            'poisson_coeff': .2
+            'poisson_coeff': .1
         }
         
         
@@ -223,7 +223,7 @@ class SimpleCars(MultiAgentEnv):
     def transmit_data(self, neigh_sizes):        
         for car_idx, car in enumerate(self._cars):
             avg_del = np.ceil(neigh_sizes[car_idx] * self._params['poisson_coeff'])
-            delay_tx = poisson.rvs(avg_del)
+            delay_tx = 0 #poisson.rvs(avg_del)
             car.store_delay(delay_tx)
             
 

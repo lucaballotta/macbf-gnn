@@ -55,7 +55,9 @@ class Trainer:
 
         # reset the environment
         data = self.env.reset()
-
+        flag_ctrl = False
+        flag_counter_max = 10
+        flag_counter = flag_counter_max
         verbose = None
         for step in tqdm(range(1, steps + 1), ncols=80):
             action = self.algo.step(data, prob=1 - (step - 1) / steps)
@@ -67,7 +69,11 @@ class Trainer:
 
             # update the algorithm
             if self.algo.is_update(step):
-                verbose = self.algo.update(step, self.writer)
+                verbose = self.algo.update(step, flag_ctrl, self.writer)
+                flag_counter -= 1
+                if flag_counter == 0:
+                    flag_counter = flag_counter_max
+                    flag_ctrl = not(flag_ctrl)
 
             # evaluate the algorithm
             if step % eval_interval == 0:
