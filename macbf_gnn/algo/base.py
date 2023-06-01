@@ -5,7 +5,8 @@ from torch import Tensor
 from abc import ABC, abstractmethod, abstractproperty
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.data import Data
-from typing import Tuple
+from typing import List, Tuple
+from torch.nn.utils.rnn import PackedSequence
 
 from macbf_gnn.env import MultiAgentEnv
 
@@ -144,7 +145,23 @@ class Algorithm(ABC):
             writer for the logs
         """
         pass
+    
+    @abstractmethod
+    def batch_edge_attr(self, graph_list: List[Data]) -> PackedSequence:
+        """
+        Batches edge attributes
 
+        Parameters
+        ----------
+        graph_list: List[Data],
+            list of graphs to be batched
+        Returns
+        -------
+        batched_edge_attr: PackedSequence,
+            batch with all edge attributes
+        """
+        pass
+    
     @abstractmethod
     def save(self, save_dir: str):
         """

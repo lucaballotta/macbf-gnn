@@ -242,6 +242,7 @@ class MACBFGNN(Algorithm):
 
                 actions = self.actor(cbf_input_data)
                 graphs_next = self._env.forward_graph(graphs, actions)
+                graphs_next.edge_attr.requires_grad = True
                 pred_state_diff_next = self.predictor(graphs_next.edge_attr)
                 cbf_input_data_next = Data(
                     x=graphs_next.x,
