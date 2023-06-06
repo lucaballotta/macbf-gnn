@@ -322,17 +322,19 @@ class MACBFGNN(Algorithm):
     def save(self, save_dir: str):
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
+        torch.save(self.predictor.state_dict(), os.path.join(save_dir, 'predictor.pkl'))
         torch.save(self.cbf.state_dict(), os.path.join(save_dir, 'cbf.pkl'))
         torch.save(self.actor.state_dict(), os.path.join(save_dir, 'actor.pkl'))
 
 
     def load(self, load_dir: str):
         assert os.path.exists(load_dir)
+        self.predictor.load_state_dict(torch.load(os.path.join(load_dir, 'predictor.pkl'), map_location=self.device))
         self.cbf.load_state_dict(torch.load(os.path.join(load_dir, 'cbf.pkl'), map_location=self.device))
         self.actor.load_state_dict(torch.load(os.path.join(load_dir, 'actor.pkl'), map_location=self.device))
 
 
-    def apply(self, data: Data) -> Tensor:
+    '''def apply(self, data: Data) -> Tensor:
         h = self.cbf(data).detach()
         action = self.actor(data).detach()
         nominal = torch.zeros_like(action)
@@ -377,4 +379,4 @@ class MACBFGNN(Algorithm):
                     actions[i].requires_grad = True
                 i_iter += 1
 
-        return action
+        return action'''
