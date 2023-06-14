@@ -1,7 +1,6 @@
 import torch.nn as nn
 import torch
 from torch.nn.utils.rnn import pad_packed_sequence, pack_sequence, PackedSequence
-from numpy import arange
 
     
 class Predictor(nn.Module):

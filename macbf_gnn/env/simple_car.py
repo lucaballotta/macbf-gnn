@@ -12,6 +12,7 @@ from torch_geometric.utils import mask_to_index
 from torch.nn.utils.rnn import pack_sequence
 from cvxpy import Expression
 from scipy.stats import poisson
+from torch.nn.utils.rnn import pad_packed_sequence, pack_sequence, PackedSequence
 
 from .utils import lqr, plot_graph
 from .base import Agent, MultiAgentEnv
@@ -81,7 +82,8 @@ class SimpleCars(MultiAgentEnv):
             'comm_radius': 1.0,
             'buffer_size': 1,
             'max_age': 2,
-            'poisson_coeff': .1
+            'poisson_coeff': .1,
+            'test_epi_max_iters': 200
         }
         
         
@@ -182,6 +184,9 @@ class SimpleCars(MultiAgentEnv):
         self._t += 1
 
         # calculate next state using dynamics
+        # print('')
+        # print('action', action)
+        # print('ref', self.u_ref(self._data))
         action = action + self.u_ref(self._data)
         lower_lim, upper_lim = self.action_lim
         action = torch.clamp(action, lower_lim, upper_lim)
@@ -254,11 +259,19 @@ class SimpleCars(MultiAgentEnv):
             x=torch.zeros_like(state),
             pos=state[:, :2],
             states=state,
-            edge_index=data.edge_index)
-        age_step = torch.zeros_like(data.edge_attr.data)
+            edge_index=data.edge_index,
+            state_diff=state[data.edge_index[0]] - state[data.edge_index[1]]
+        )
+                
+        # increase age of all data
+        if isinstance(data.edge_attr, PackedSequence):
+            edge_attr_tmp = data.edge_attr
+        else:
+            edge_attr_tmp = pack_sequence(data.edge_attr, enforce_sorted=False)
+            
+        age_step = torch.zeros_like(edge_attr_tmp.data)
         age_step[:,-1] = 1
-        edge_attr = data.edge_attr._replace(data=data.edge_attr.data + age_step)
-        edge_attr.requires_grad = True
+        edge_attr = edge_attr_tmp._replace(data=edge_attr_tmp.data + age_step)
         data_next.edge_attr = edge_attr
         
         return data_next
@@ -318,10 +331,9 @@ class SimpleCars(MultiAgentEnv):
 
     def add_communication_links(self, data: Data) -> list:
         data = self._builder(data)
-        edge_index_curr = data.edge_index
         neigh_sizes = [0] * self.num_agents
         for car_idx, car in enumerate(self._cars):
-            neighbors = edge_index_curr[0][edge_index_curr[1] == car_idx].tolist()
+            neighbors = data.edge_index[0][data.edge_index[1] == car_idx].tolist()
             car.store_neighbors(neighbors)
             neigh_sizes[car_idx] = len(neighbors)
             
@@ -339,6 +351,7 @@ class SimpleCars(MultiAgentEnv):
                 
         data.edge_index = torch.tensor(edge_index, dtype=torch.long)
         data.edge_attr = edge_attr
+        data.state_diff = data.states[data.edge_index[0]] - data.states[data.edge_index[1]]
         
         # if len(edge_attr) > 0:
         #     if self.delay_aware:
@@ -347,9 +360,6 @@ class SimpleCars(MultiAgentEnv):
         #         data.edge_attr = torch.cat(edge_attr)
         # else:
         #     data.edge_attr = edge_attr
-            
-        # store true state differences
-        data.state_diff = data.states[data.edge_index[0]] - data.states[data.edge_index[1]]
         
         return data
 

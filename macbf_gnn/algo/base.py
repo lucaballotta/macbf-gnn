@@ -147,22 +147,6 @@ class Algorithm(ABC):
         pass
     
     @abstractmethod
-    def batch_edge_attr(self, graph_list: List[Data]) -> PackedSequence:
-        """
-        Batches edge attributes
-
-        Parameters
-        ----------
-        graph_list: List[Data],
-            list of graphs to be batched
-        Returns
-        -------
-        batched_edge_attr: PackedSequence,
-            batch with all edge attributes
-        """
-        pass
-    
-    @abstractmethod
     def save(self, save_dir: str):
         """
         Save models in save_dir

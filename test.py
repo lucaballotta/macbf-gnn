@@ -134,9 +134,9 @@ if __name__ == '__main__':
 
     # custom
     parser.add_argument('--path', type=str, default=None)
-    parser.add_argument('-n', '--num-agents', type=int, default=None)
+    parser.add_argument('-n', '--num-agents', type=int, default=10)
     parser.add_argument('--demo', type=int, default=None)
-    parser.add_argument('--env', type=str, default=None)
+    parser.add_argument('--env', type=str, default='SimpleCar')
     parser.add_argument('--iter', type=int, default=None)
     parser.add_argument('--epi', type=int, default=5)
     parser.add_argument('--no-video', action='store_true', default=False)

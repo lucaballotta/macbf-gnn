@@ -14,7 +14,7 @@ from torch import Tensor
 from tqdm import tqdm
 
 from macbf_gnn.env import MultiAgentEnv
-from macbf_gnn.algo.cbf_gnn import CBFGNN, Predictor
+from macbf_gnn.algo.cbf_gnn import CBFGNN
 
 
 def set_seed(seed: int):
@@ -165,7 +165,7 @@ def eval_ctrl_epi(
     safe = True
     pbar = tqdm()
     states = []
-    while True:
+    for _ in range(env._params['test_epi_max_iters']):
         action = controller(data)
         states.append(data.states)
         next_data, reward, done, info = env.step(action)
@@ -238,10 +238,11 @@ def plot_cbf_contour(
             state[agent_id, x_dim] = x[i, j]
             state[agent_id, y_dim] = y[i, j]
             new_data = Data(x=data.x, edge_index=data.edge_index, pos=state[:, :2],
-                            edge_attr=state[data.edge_index[0]]-state[data.edge_index[1]])
+                            edge_attr=data.edge_attr)
             plot_data.append(new_data)
     plot_data = Batch.from_data_list(plot_data)
     cbf = cbf_fun(plot_data).view(n_mesh, n_mesh, env.num_agents)[:, :, agent_id].detach().cpu()
+    print(cbf)
     ax = env.render(return_ax=True)
     if attention:
         ax = plot_attention(ax, cbf_fun.attention, data, agent_id)

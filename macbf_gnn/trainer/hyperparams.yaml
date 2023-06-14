@@ -3,6 +3,7 @@ SimpleCar:
   eps: 0.02
   inner_iter: 10
   loss_action_coef: 0.05
+  loss_pred_coef: 1.0
   loss_unsafe_coef: 1.0
   loss_safe_coef: 1.0
   loss_h_dot_coef: 0.5
@@ -11,6 +12,7 @@ SimpleDrone:
   eps: 0.02
   inner_iter: 10
   loss_action_coef: 0.05
+  loss_pred_coef: 1.0
   loss_unsafe_coef: 1.0
   loss_safe_coef: 1.0
   loss_h_dot_coef: 0.5

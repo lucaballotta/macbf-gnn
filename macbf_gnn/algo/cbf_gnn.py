@@ -135,6 +135,21 @@ class MACBFGNN(Algorithm):
                 edge_index=data.edge_index,
                 edge_attr=self.predictor(data.edge_attr)
             )
+            print('')
+            print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
+            # print('actual safe', not torch.any(self._env.unsafe_mask(data)))
+            print('pred', data_pred.edge_attr)
+            print('state', data.state_diff)
+            # print('safe', all(self.cbf(data_pred))>0)
+            print('loss pred', torch.mean(torch.norm(data_pred.edge_attr - data.state_diff, dim=1) / torch.norm(data.state_diff, dim=1)))
+            # action = self.actor(data_pred)
+            # data_next = self._env.forward_graph(data, action)
+            # data_pred_next = Data(
+            #     x=data_next.x,
+            #     edge_index=data_next.edge_index,
+            #     edge_attr=self.predictor(data_next.edge_attr)
+            # )
+            # print('next safe', all(self.cbf(data_pred_next))>0)
             return self.actor(data_pred)
             
         else:
@@ -183,13 +198,15 @@ class MACBFGNN(Algorithm):
                 # get current state difference predictions
                 pred_state_diff = self.predictor(batched_edge_attr)
                 true_state_diff = graphs.state_diff
-                loss_pred = torch.mean(torch.square((pred_state_diff - true_state_diff).sum(dim=1) / torch.norm(true_state_diff, dim=1)))
+                true_state_diff_norm = torch.norm(true_state_diff, dim=1)
+                pred_err_norm = torch.norm(pred_state_diff - true_state_diff, dim=1)
+                loss_pred = torch.mean(pred_err_norm / true_state_diff_norm)
                 
                 # get CBF values and the control inputs
                 cbf_input_data = Data(
                     x=graphs.x,
                     edge_index=graphs.edge_index,
-                    edge_attr=pred_state_diff
+                    edge_attr=pred_state_diff #pred_state_diff
                 )
                 h = self.cbf(cbf_input_data)
 
@@ -205,7 +222,7 @@ class MACBFGNN(Algorithm):
                 else:
                     loss_unsafe = torch.tensor(0.0).type_as(h_unsafe)
                     acc_unsafe = torch.tensor(1.0).type_as(h_unsafe)
-                                        
+                
                 # safe region h(x) > 0
                 safe_mask = self._env.safe_mask(graphs)
                 h_safe = h[safe_mask]
@@ -244,16 +261,25 @@ class MACBFGNN(Algorithm):
                 graphs_next = self._env.forward_graph(graphs, actions)
                 graphs_next.edge_attr.requires_grad = True
                 pred_state_diff_next = self.predictor(graphs_next.edge_attr)
+                
+                true_state_diff_next = graphs_next.state_diff
+                true_state_diff_next_norm = torch.norm(true_state_diff_next, dim=1)
+                pred_err_next_norm = torch.norm(pred_state_diff_next - true_state_diff_next, dim=1)
+                loss_pred += torch.mean(pred_err_next_norm / true_state_diff_next_norm)
+                
                 cbf_input_data_next = Data(
                     x=graphs_next.x,
                     edge_index=graphs_next.edge_index,
                     edge_attr=pred_state_diff_next
                 )
                 h_next = self.cbf(cbf_input_data_next)
-                h_dot = (h_next[safe_mask] - h[safe_mask]) / self._env.dt
-                max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h[safe_mask] + self.params['eps'])
+                # h_dot = (h_next[safe_mask] - h[safe_mask]) / self._env.dt
+                h_dot = (h_next - h) / self._env.dt
+                # max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h[safe_mask] + self.params['eps'])
+                max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + self.params['eps'])
                 loss_h_dot = torch.mean(max_val_h_dot)
-                acc_h_dot = torch.mean(torch.greater_equal((h_dot + self.params['alpha'] * h[safe_mask]), 0).type_as(h_dot))
+                # acc_h_dot = torch.mean(torch.greater_equal((h_dot + self.params['alpha'] * h[safe_mask]), 0).type_as(h_dot))
+                acc_h_dot = torch.mean(torch.greater_equal((h_dot + self.params['alpha'] * h), 0).type_as(h_dot))
                 
                 # action loss
                 loss_action = torch.mean(torch.square(actions).sum(dim=1))
