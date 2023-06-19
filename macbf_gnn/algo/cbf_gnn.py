@@ -135,21 +135,26 @@ class MACBFGNN(Algorithm):
                 edge_index=data.edge_index,
                 edge_attr=self.predictor(data.edge_attr)
             )
-            print('')
+            '''print('')
             print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
-            # print('actual safe', not torch.any(self._env.unsafe_mask(data)))
-            print('pred', data_pred.edge_attr)
-            print('state', data.state_diff)
-            # print('safe', all(self.cbf(data_pred))>0)
-            print('loss pred', torch.mean(torch.norm(data_pred.edge_attr - data.state_diff, dim=1) / torch.norm(data.state_diff, dim=1)))
-            # action = self.actor(data_pred)
-            # data_next = self._env.forward_graph(data, action)
-            # data_pred_next = Data(
-            #     x=data_next.x,
-            #     edge_index=data_next.edge_index,
-            #     edge_attr=self.predictor(data_next.edge_attr)
-            # )
-            # print('next safe', all(self.cbf(data_pred_next))>0)
+            print('actual safe', not torch.any(self._env.unsafe_mask(data)))
+            h = self.cbf(data_pred)
+            print('cbf', h)
+            action = self.actor(data_pred)
+            data_next = self._env.forward_graph(data, action)
+            data_pred_next = Data(
+                x=data_next.x,
+                edge_index=data_next.edge_index,
+                edge_attr=self.predictor(data_next.edge_attr)
+            )
+            h_next = self.cbf(data_pred_next)
+            print('next cbf', h_next)
+            action = self.actor(data_pred)
+            print('action', action)
+            print('action norm', torch.mean(torch.square(action).sum(dim=1)))
+            h_dot = (h_next - h) / self._env.dt
+            max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + self.params['eps'])
+            print('loss_h_dot', torch.mean(max_val_h_dot).item())'''
             return self.actor(data_pred)
             
         else:
@@ -265,48 +270,49 @@ class MACBFGNN(Algorithm):
                 true_state_diff_next = graphs_next.state_diff
                 true_state_diff_next_norm = torch.norm(true_state_diff_next, dim=1)
                 pred_err_next_norm = torch.norm(pred_state_diff_next - true_state_diff_next, dim=1)
-                loss_pred += torch.mean(pred_err_next_norm / true_state_diff_next_norm)
+                loss_pred += self.params['loss_pred_next_ratio_coef'] * torch.mean(pred_err_next_norm / true_state_diff_next_norm)
                 
                 cbf_input_data_next = Data(
                     x=graphs_next.x,
                     edge_index=graphs_next.edge_index,
                     edge_attr=pred_state_diff_next
                 )
+                # not_unsafe_mask = not(unsafe_mask)
+                # h_not_unsafe = h[not_unsafe_mask]
                 h_next = self.cbf(cbf_input_data_next)
-                # h_dot = (h_next[safe_mask] - h[safe_mask]) / self._env.dt
+                # h_dot = (h_next - h_not_unsafe) / self._env.dt
                 h_dot = (h_next - h) / self._env.dt
-                # max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h[safe_mask] + self.params['eps'])
+                # max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h_not_unsafe + self.params['eps'])
                 max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + self.params['eps'])
                 loss_h_dot = torch.mean(max_val_h_dot)
-                # acc_h_dot = torch.mean(torch.greater_equal((h_dot + self.params['alpha'] * h[safe_mask]), 0).type_as(h_dot))
+                # acc_h_dot = torch.mean(torch.greater_equal((h_dot + self.params['alpha'] * h_not_unsafe), 0).type_as(h_dot))
                 acc_h_dot = torch.mean(torch.greater_equal((h_dot + self.params['alpha'] * h), 0).type_as(h_dot))
                 
                 # action loss
                 loss_action = torch.mean(torch.square(actions).sum(dim=1))
 
                 # backpropagation
-                # if not train_ctrl:
-                # self.optim_predictor.zero_grad(set_to_none=True)
-                # loss_pred.backward()
-                # torch.nn.utils.clip_grad_norm_(self.predictor.parameters(), 1e-3)
-                # self.optim_predictor.step()
+                if not train_ctrl:
+                    self.optim_predictor.zero_grad(set_to_none=True)
+                    loss_pred.backward()
+                    torch.nn.utils.clip_grad_norm_(self.predictor.parameters(), 1e-3)
+                    self.optim_predictor.step()
                 
-                # else:
-                loss = self.params['loss_unsafe_coef'] * loss_unsafe + \
-                    self.params['loss_safe_coef'] * loss_safe + \
-                    self.params['loss_h_dot_coef'] * loss_h_dot + \
-                    self.params['loss_action_coef'] * loss_action + \
-                    self.params['loss_pred_coef'] * loss_pred
-                self.optim_predictor.zero_grad(set_to_none=True)
-                self.optim_cbf.zero_grad(set_to_none=True)
-                self.optim_actor.zero_grad(set_to_none=True)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.predictor.parameters(), 1e-3)
-                torch.nn.utils.clip_grad_norm_(self.cbf.parameters(), 1e-3)
-                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1e-3)
-                self.optim_predictor.step() 
-                self.optim_cbf.step()
-                self.optim_actor.step()
+                else:
+                    loss_ctrl = self.params['loss_unsafe_coef'] * loss_unsafe + \
+                        self.params['loss_safe_coef'] * loss_safe + \
+                        self.params['loss_h_dot_coef'] * loss_h_dot + \
+                        self.params['loss_action_coef'] * loss_action
+                    #self.optim_predictor.zero_grad(set_to_none=True)
+                    self.optim_cbf.zero_grad(set_to_none=True)
+                    self.optim_actor.zero_grad(set_to_none=True)
+                    loss_ctrl.backward()
+                    #torch.nn.utils.clip_grad_norm_(self.predictor.parameters(), 1e-3)
+                    torch.nn.utils.clip_grad_norm_(self.cbf.parameters(), 1e-3)
+                    torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1e-3)
+                    #self.optim_predictor.step() 
+                    self.optim_cbf.step()
+                    self.optim_actor.step()
 
                 # save loss
                 writer.add_scalar('loss/unsafe', loss_unsafe.item(), step * self.params['inner_iter'] + i_inner)
@@ -325,6 +331,8 @@ class MACBFGNN(Algorithm):
         self.buffer.clear()
 
         return {
+            'h safe/avg': torch.mean(h_safe).item(),
+            'h unsafe/avg': torch.mean(h_unsafe).item(),
             'loss/prediction': loss_pred.item(),
             'loss/safe': loss_safe.item(),
             'loss/unsafe': loss_unsafe.item(),

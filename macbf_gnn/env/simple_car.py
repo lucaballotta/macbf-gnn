@@ -259,10 +259,10 @@ class SimpleCars(MultiAgentEnv):
             x=torch.zeros_like(state),
             pos=state[:, :2],
             states=state,
-            edge_index=data.edge_index,
-            state_diff=state[data.edge_index[0]] - state[data.edge_index[1]]
+            edge_index=data.edge_index
         )
-                
+        data_next.state_diff = data_next.states[data_next.edge_index[0]] - data_next.states[data_next.edge_index[1]]
+        
         # increase age of all data
         if isinstance(data.edge_attr, PackedSequence):
             edge_attr_tmp = data.edge_attr

@@ -90,9 +90,10 @@ class Buffer:
                 else:
                     index_unsafe = self.unsafe_data
                     
+            num_unsafe = len(index_unsafe)
             if len(self.safe_data) > 0:
-                if len(self.safe_data) > n // 2:
-                    index_safe = random.choices(self.safe_data, k=n // 2)
+                if len(self.safe_data) > n - num_unsafe:
+                    index_safe = random.choices(self.safe_data, k=n - num_unsafe)
                 else:
                     index_safe = self.safe_data
                     

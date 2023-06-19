@@ -56,7 +56,7 @@ class Trainer:
         # reset the environment
         data = self.env.reset()
         flag_ctrl = False
-        flag_counter_max = 10
+        flag_counter_max = 5
         flag_counter = flag_counter_max
         verbose = None
         for step in tqdm(range(1, steps + 1), ncols=80):
