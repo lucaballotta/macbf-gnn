@@ -14,6 +14,7 @@ def make_algo(
         num_agents: int,
         node_dim: int,
         edge_dim: int,
+        state_dim: int,
         action_dim: int,
         device: torch.device,
         batch_size: int = 512,
@@ -25,7 +26,7 @@ def make_algo(
         )
     if algo == 'macbfgnn':
         return MACBFGNN(
-            env, num_agents, node_dim, edge_dim, action_dim, device, batch_size, hyperparams
+            env, num_agents, node_dim, edge_dim, state_dim, action_dim, device, batch_size, hyperparams
         )
     else:
         raise NotImplementedError('Unknown Algorithm!')

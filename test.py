@@ -47,6 +47,7 @@ def test(args):
         num_agents=settings['num_agents'] if args.num_agents is None else args.num_agents,
         node_dim=env.node_dim,
         edge_dim=env.edge_dim,
+        state_dim=env.state_dim,
         action_dim=env.action_dim,
         device=device,
         hyperparams=settings['hyper_params'] if 'hyper_params' in settings.keys() else None

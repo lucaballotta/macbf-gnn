@@ -23,8 +23,9 @@ class SimpleCars(MultiAgentEnv):
     def __init__(self, num_agents: int, device: torch.device, dt: float = 0.05, params: dict = None, delay_aware: bool = True):
         super(SimpleCars, self).__init__(num_agents, device, dt, params, delay_aware)
         
-        # state trajectory
+        # states and actions along trajectory
         self._states = deque(maxlen=self._params['buffer_size'])
+        self._actions = deque(maxlen=self._params['buffer_size'])  # actions that generate the states in self._states from previous states
         
         # cars
         car = SimpleCar(buffer_size=self._params['buffer_size'], max_age=self._params['max_age'])
@@ -150,6 +151,9 @@ class SimpleCars(MultiAgentEnv):
         # store states
         self._states.append(states)
         
+        # initialize actions to zero
+        self._actions.append(torch.zeros(self.num_agents, self.action_dim))
+        
         # reset agents' data
         [car.reset_data() for car in self._cars]
 
@@ -193,6 +197,7 @@ class SimpleCars(MultiAgentEnv):
         with torch.no_grad():
             state = self.forward(self.state, action)
             self._states.append(state)
+            self._actions.append(action)
         
         # construct graph using the new states
         data = Data(x=torch.zeros_like(state), pos=state[:, :2], states=state)
@@ -239,8 +244,10 @@ class SimpleCars(MultiAgentEnv):
                 delay_rec = delay_list[idx_neighbors]
                 for neighbor in neighbors:
                     state_diff = self._states[-delay_rec - 1][idx_car] - self._states[-delay_rec - 1][neighbor]
+                    action_diff = self._actions[-delay_rec - 1][idx_car] - self._actions[-delay_rec - 1][neighbor]
+                    action_state_diff = torch.cat([action_diff, state_diff])
                     stored, idx = self._cars[neighbor].store_data(
-                        idx_car, state_diff, delay_rec, self.delay_aware)
+                        idx_car, action_state_diff, delay_rec, self.delay_aware)
                     # if stored and self.delay_aware:
                     #     self._cars[neighbor].store_states(
                     #         self._states[-delay_rec - 1][neighbor], idx_car, self._states[-delay_rec - 1][idx_car], idx)
@@ -270,7 +277,7 @@ class SimpleCars(MultiAgentEnv):
             edge_attr_tmp = pack_sequence(data.edge_attr, enforce_sorted=False)
             
         age_step = torch.zeros_like(edge_attr_tmp.data)
-        age_step[:,-1] = 1
+        age_step[:,-1] = 1.
         edge_attr = edge_attr_tmp._replace(data=edge_attr_tmp.data + age_step)
         data_next.edge_attr = edge_attr
         

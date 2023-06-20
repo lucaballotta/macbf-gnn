@@ -19,6 +19,7 @@ class Algorithm(ABC):
             num_agents: int,
             node_dim: int,
             edge_dim: int,
+            state_dim: int,
             action_dim: int,
             device: torch.device
     ):
@@ -27,6 +28,7 @@ class Algorithm(ABC):
         self._num_agents = num_agents
         self._node_dim = node_dim
         self._edge_dim = edge_dim
+        self._state_dim = state_dim
         self._action_dim = action_dim
         self._device = device
         self.params = {}
@@ -43,6 +45,10 @@ class Algorithm(ABC):
     def edge_dim(self) -> int:
         return self._edge_dim
 
+    @property
+    def state_dim(self) -> int:
+        return self._state_dim
+    
     @property
     def action_dim(self) -> int:
         return self._action_dim

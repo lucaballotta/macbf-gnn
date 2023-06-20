@@ -69,6 +69,7 @@ class MACBFGNN(Algorithm):
             num_agents: int,
             node_dim: int,
             edge_dim: int,
+            state_dim: int,
             action_dim: int,
             device: torch.device,
             batch_size: int = 500,
@@ -79,13 +80,15 @@ class MACBFGNN(Algorithm):
             num_agents=num_agents,
             node_dim=node_dim,
             edge_dim=edge_dim,
+            state_dim=state_dim,
             action_dim=action_dim,
             device=device
         )
 
         # models
         self.predictor = Predictor(
-            edge_dim=self.edge_dim
+            input_dim=self.action_dim + self.state_dim + 1,
+            output_dim=self.state_dim
         ).to(device)
         self.cbf = CBFGNN(
             num_agents=self.num_agents,
@@ -135,7 +138,7 @@ class MACBFGNN(Algorithm):
                 edge_index=data.edge_index,
                 edge_attr=self.predictor(data.edge_attr)
             )
-            '''print('')
+            print('')
             print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
             print('actual safe', not torch.any(self._env.unsafe_mask(data)))
             h = self.cbf(data_pred)
@@ -154,7 +157,7 @@ class MACBFGNN(Algorithm):
             print('action norm', torch.mean(torch.square(action).sum(dim=1)))
             h_dot = (h_next - h) / self._env.dt
             max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + self.params['eps'])
-            print('loss_h_dot', torch.mean(max_val_h_dot).item())'''
+            print('loss_h_dot', torch.mean(max_val_h_dot).item())
             return self.actor(data_pred)
             
         else:
@@ -211,7 +214,7 @@ class MACBFGNN(Algorithm):
                 cbf_input_data = Data(
                     x=graphs.x,
                     edge_index=graphs.edge_index,
-                    edge_attr=pred_state_diff #pred_state_diff
+                    edge_attr=pred_state_diff
                 )
                 h = self.cbf(cbf_input_data)
 
@@ -275,7 +278,7 @@ class MACBFGNN(Algorithm):
                 cbf_input_data_next = Data(
                     x=graphs_next.x,
                     edge_index=graphs_next.edge_index,
-                    edge_attr=pred_state_diff_next
+                    edge_attr=true_state_diff_next
                 )
                 # not_unsafe_mask = not(unsafe_mask)
                 # h_not_unsafe = h[not_unsafe_mask]
