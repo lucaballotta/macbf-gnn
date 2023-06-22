@@ -2,14 +2,27 @@ import torch.nn as nn
 import torch
 from torch.nn.utils.rnn import pad_packed_sequence, pack_sequence, PackedSequence
 
+from macbf_gnn.nn import MLP
+
     
 class Predictor(nn.Module):
-    def __init__(self, input_dim: int, output_dim: int, num_layers: int=4, hidden_size: int=64):
+    '''def __init__(self, input_dim: int, output_dim: int, num_layers: int=4, hidden_size: int=64):
         super(Predictor, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.lstm = nn.LSTM(input_dim, hidden_size, num_layers, batch_first=True)
-        self.lin = nn.Linear(hidden_size, output_dim)
+        self.out = nn.Linear(hidden_size, output_dim)'''
+        
+    def __init__(self, input_dim: int, output_dim: int, num_layers: int = 4, hidden_size: int = 256):
+        super(Predictor, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.lstm = nn.LSTM(
+            input_dim, hidden_size, num_layers, batch_first=True
+        )
+        self.mlp = MLP(
+            in_channels=hidden_size, out_channels=output_dim, hidden_layers=(32,32), limit_lip=True
+        )
 
     def forward(self, edge_attr):
         if isinstance(edge_attr, PackedSequence):
@@ -24,6 +37,6 @@ class Predictor(nn.Module):
         out = out_padded[0]
         lens = out_padded[1]
         out_nnz = torch.stack([sample[lens[idx] - 1, :] for idx, sample in enumerate(out)])
-        pred = self.lin(out_nnz)
+        pred = self.mlp(out_nnz)
         
         return pred
