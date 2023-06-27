@@ -138,33 +138,33 @@ class MACBFGNN(Algorithm):
                 edge_index=data.edge_index,
                 edge_attr=self.predictor(data.edge_attr)
             )
-            '''print('')
-            print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
-            print('actual safe', not torch.any(self._env.unsafe_mask(data)))
-            h = self.cbf(data_pred)
-            print('state', data.state_diff)
-            print('edge attr', data.edge_attr)
-            print('pred state', data_pred.edge_attr)
-            true_state_diff = data.state_diff
-            true_state_diff_norm = torch.norm(true_state_diff, dim=1)
-            pred_err_norm = torch.norm(data_pred.edge_attr - true_state_diff, dim=1)
-            print('loss pred', torch.mean(pred_err_norm / true_state_diff_norm))
-            print('cbf', h)
-            action = self.actor(data_pred)
-            data_next = self._env.forward_graph(data, action)
-            input_cbf_next = Data(
-                x=data_next.x,
-                edge_index=data_next.edge_index,
-                edge_attr=data_next.state_diff
-            )
-            h_next = self.cbf(input_cbf_next)
-            print('next cbf', h_next)
-            action = self.actor(data_pred)
-            print('action', action)
-            print('action norm', torch.mean(torch.square(action).sum(dim=1)))
-            h_dot = (h_next - h) / self._env.dt
-            max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + self.params['eps'])
-            print('loss_h_dot', torch.mean(max_val_h_dot).item())'''
+            # print('')
+            # print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
+            # print('actual safe', not torch.any(self._env.unsafe_mask(data)))
+            # h = self.cbf(data_pred)
+            # print('state', data.state_diff)
+            # print('edge attr', data.edge_attr)
+            # print('pred state', data_pred.edge_attr)
+            # true_state_diff = data.state_diff
+            # true_state_diff_norm = torch.norm(true_state_diff, dim=1)
+            # pred_err_norm = torch.norm(data_pred.edge_attr - true_state_diff, dim=1)
+            # print('loss pred', torch.mean(pred_err_norm / true_state_diff_norm))
+            # print('cbf', h)
+            # action = self.actor(data_pred)
+            # data_next = self._env.forward_graph(data, action)
+            # input_cbf_next = Data(
+            #     x=data_next.x,
+            #     edge_index=data_next.edge_index,
+            #     edge_attr=data_next.state_diff
+            # )
+            # h_next = self.cbf(input_cbf_next)
+            # print('next cbf', h_next)
+            # action = self.actor(data_pred)
+            # print('action', action)
+            # print('action norm', torch.mean(torch.square(action).sum(dim=1)))
+            # h_dot = (h_next - h) / self._env.dt
+            # max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + self.params['eps'])
+            # print('loss_h_dot', torch.mean(max_val_h_dot).item())
             return self.actor(data_pred)
             
         else:

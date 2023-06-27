@@ -21,7 +21,7 @@ class Predictor(nn.Module):
             input_dim, hidden_size, num_layers, batch_first=True
         )
         self.mlp = MLP(
-            in_channels=hidden_size, out_channels=output_dim, hidden_layers=(32,32), limit_lip=True
+            in_channels=hidden_size, out_channels=output_dim, hidden_layers=(32, 32), limit_lip=True
         )
 
     def forward(self, edge_attr):
