@@ -2,7 +2,7 @@ import torch.nn as nn
 
 from torch_geometric.nn import Sequential
 from torch_geometric.nn.conv.transformer_conv import TransformerConv
-from torch import Tensor
+from torch import Tensor, cat
 from torch_geometric.data import Data
 
 from macbf_gnn.nn.gnn import ControllerGNNLayer
@@ -24,7 +24,7 @@ class ControllerGNN(MultiAgentController):
             (ControllerGNNLayer(node_dim=node_dim, edge_dim=edge_dim, output_dim=1024, phi_dim=phi_dim),
              'x, edge_attr, edge_index -> x'),
         ])
-        self.feat_2_action = MLP(in_channels=1024, out_channels=action_dim, hidden_layers=(512, 128, 32))
+        self.feat_2_action = MLP(in_channels=1024+action_dim, out_channels=action_dim, hidden_layers=(512, 128, 32))
         
         
     def forward(self, data: Data) -> Tensor:
@@ -42,6 +42,6 @@ class ControllerGNN(MultiAgentController):
             control actions for all agents
         """
         x = self.feat_transformer(data.x, data.edge_attr, data.edge_index)
-        actions = self.feat_2_action(x)
-            
+        actions = self.feat_2_action(cat([x, data.u_ref], dim=1))
+                    
         return actions

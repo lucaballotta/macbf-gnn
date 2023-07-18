@@ -6,6 +6,7 @@ from typing import Tuple
 from time import time
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+from torch_geometric.data import Data
 
 from macbf_gnn.env import MultiAgentEnv
 from macbf_gnn.algo import Algorithm
@@ -60,6 +61,9 @@ class Trainer:
         flag_counter = flag_counter_max
         verbose = None
         for step in tqdm(range(1, steps + 1), ncols=80):
+            # data_u_ref = Data(u_ref=self.env.u_ref(data))
+            # data.update(data_u_ref)
+            data.u_ref = self.env.u_ref(data)
             action = self.algo.step(data, prob=1 - (step - 1) / steps)
             next_data, reward, done, info = self.env.step(action)
             if done:

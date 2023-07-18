@@ -136,7 +136,8 @@ class MACBFGNN(Algorithm):
             data_pred = Data(
                 x=data.x,
                 edge_index=data.edge_index,
-                edge_attr=self.predictor(data.edge_attr)
+                edge_attr=self.predictor(data.edge_attr),
+                u_ref=data.u_ref
             )
             # print('')
             # print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
@@ -218,12 +219,13 @@ class MACBFGNN(Algorithm):
                 loss_pred = torch.mean(pred_err_norm / true_state_diff_norm)
                 
                 # get CBF values and the control inputs
-                cbf_input_data = Data(
+                input_data = Data(
                     x=graphs.x,
                     edge_index=graphs.edge_index,
-                    edge_attr=pred_state_diff
+                    edge_attr=pred_state_diff,
+                    u_ref = graphs.u_ref
                 )
-                h = self.cbf(cbf_input_data)
+                h = self.cbf(input_data)
 
                 # calculate loss
                 # unsafe region h(x) < 0
@@ -271,8 +273,8 @@ class MACBFGNN(Algorithm):
                 h_dot_new_link = (h_next_new_link - h[h_dot_mask]) / self._env.dt
                 residue = (h_dot_new_link - h_dot).clone().detach()
                 h_dot = residue + h_dot'''
-
-                actions = self.actor(cbf_input_data)
+                
+                actions = self.actor(input_data)
                 graphs_next = self._env.forward_graph(graphs, actions)
                 graphs_next.edge_attr.requires_grad = True
                 pred_state_diff_next = self.predictor(graphs_next.edge_attr)
