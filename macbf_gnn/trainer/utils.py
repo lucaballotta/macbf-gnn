@@ -166,6 +166,7 @@ def eval_ctrl_epi(
     pbar = tqdm()
     states = []
     for _ in range(env._params['test_epi_max_iters']):
+        data.u_ref = env.u_ref(data)
         action = controller(data)
         states.append(data.states)
         next_data, reward, done, info = env.step(action)

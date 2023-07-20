@@ -42,6 +42,7 @@ def plot_cbf(args):
         num_agents=settings['num_agents'],
         node_dim=env.node_dim,
         edge_dim=env.edge_dim,
+        state_dim=env.state_dim,
         action_dim=env.action_dim,
         device=device,
         hyperparams=settings['hyper_params']
@@ -72,6 +73,7 @@ def plot_cbf(args):
         t = 0
         os.mkdir(os.path.join(fig_path, f'epi_{i_epi}'))
         while True:
+            data.u_ref = env.u_ref(data)
             action = algo.act(data)
 
             if hasattr(algo, 'cbf'):

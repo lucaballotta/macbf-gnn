@@ -81,8 +81,8 @@ class SimpleCars(MultiAgentEnv):
             'car_radius': 0.05,
             'dist2goal': 0.02,
             'comm_radius': 1.0,
-            'buffer_size': 1,
-            'max_age': 5,
+            'buffer_size': 5,  # max number of transmissions (tx delays) stored by cars
+            'max_age': 5,  # max age of data stored by cars (older are discarded)
             'poisson_coeff': .1,
             'test_epi_max_iters': 200
         }
@@ -188,16 +188,13 @@ class SimpleCars(MultiAgentEnv):
         self._t += 1
 
         # calculate next state using dynamics
-        # print('')
-        # print('action', action)
-        # print('ref', self.u_ref(self._data))
         action = action + self.u_ref(self._data)
         lower_lim, upper_lim = self.action_lim
         action = torch.clamp(action, lower_lim, upper_lim)
         with torch.no_grad():
+            self._actions.append(action)
             state = self.forward(self.state, action)
             self._states.append(state)
-            self._actions.append(action)
         
         # construct graph using the new states
         data = Data(x=torch.zeros_like(state), pos=state[:, :2], states=state)
@@ -217,7 +214,7 @@ class SimpleCars(MultiAgentEnv):
         
         # store current edge attributes with received delayed data
         self._data = self.add_edge_attributes(data)
-        
+                
         # the episode ends when reaching max_episode_steps or all the agents reach the goal
         time_up = self._t >= self.max_episode_steps
         reach = torch.less(torch.norm(self.data.states[:, :2] - self._goal, dim=1), self._params['dist2goal']).all()
@@ -343,6 +340,8 @@ class SimpleCars(MultiAgentEnv):
             neighbors = data.edge_index[0][data.edge_index[1] == car_idx].tolist()
             car.store_neighbors(neighbors)
             neigh_sizes[car_idx] = len(neighbors)
+            if car_idx == 1:
+                print('neighbors now', neighbors)
             
         return neigh_sizes
         
