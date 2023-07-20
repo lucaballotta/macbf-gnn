@@ -340,8 +340,6 @@ class SimpleCars(MultiAgentEnv):
             neighbors = data.edge_index[0][data.edge_index[1] == car_idx].tolist()
             car.store_neighbors(neighbors)
             neigh_sizes[car_idx] = len(neighbors)
-            if car_idx == 1:
-                print('neighbors now', neighbors)
             
         return neigh_sizes
         
