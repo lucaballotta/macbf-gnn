@@ -22,7 +22,7 @@ def make_algo(
 ) -> Algorithm:
     if algo == 'nominal':
         return Nominal(
-            env, num_agents, node_dim, edge_dim, action_dim, device
+            env, num_agents, node_dim, edge_dim, state_dim, action_dim, device
         )
     if algo == 'macbfgnn':
         return MACBFGNN(

@@ -386,9 +386,8 @@ class SimpleCars(MultiAgentEnv):
     
     
     def u_ref(self, data: Data) -> Tensor:
-        goal = torch.cat([self._goal, torch.zeros_like(self._goal)], dim=1)
         states = data.states.reshape(-1, self.num_agents, self.state_dim)
-        diff = (states - goal)
+        diff = (states - self._goal)
 
         if self._K is None:
             # calculate the LQR controller

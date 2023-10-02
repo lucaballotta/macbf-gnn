@@ -35,8 +35,8 @@ def train(args):
             'loss_pred_coef': 1.,
             'loss_pred_next_ratio_coef': 1.,
             'loss_unsafe_coef': 1.,
-            'loss_safe_coef': 1.2,
-            'loss_h_dot_coef': .7
+            'loss_safe_coef': 1.,
+            'loss_h_dot_coef': .5
         }
         print('> Using custom hyper-parameters')
     else:

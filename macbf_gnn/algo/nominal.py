@@ -17,6 +17,7 @@ class Nominal(Algorithm):
             num_agents: int,
             node_dim: int,
             edge_dim: int,
+            state_dim: int,
             action_dim: int,
             device: torch.device,
     ):
@@ -25,6 +26,7 @@ class Nominal(Algorithm):
             num_agents=num_agents,
             node_dim=node_dim,
             edge_dim=edge_dim,
+            state_dim=state_dim,
             action_dim=action_dim,
             device=device
         )
