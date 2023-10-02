@@ -45,17 +45,17 @@ class SimpleCars(MultiAgentEnv):
 
     @property
     def state_dim(self) -> int:
-        return 4
+        return 2
 
 
     @property
     def node_dim(self) -> int:
-        return 4
+        return 2
 
 
     @property
     def edge_dim(self) -> int:
-        return 4
+        return 2
 
 
     @property
@@ -89,16 +89,17 @@ class SimpleCars(MultiAgentEnv):
         
         
     def dynamics(self, x: Tensor, u: Union[Tensor, Expression]) -> Union[Tensor, Expression]:
-        if isinstance(u, Expression):
-            x = x.cpu().detach().numpy()
-            A = np.zeros((self.state_dim, self.state_dim))
-            A[0, 2] = 1.
-            A[1, 3] = 1.
-            B = np.array([[1, 0], [0, 1], [0, 0], [0, 0]])
-            xdot = x @ A.T + u @ B.T
-            return xdot
-        else:
-            return torch.cat([x[:, 2:], u], dim=1)
+        return u
+        # if isinstance(u, Expression):
+        #     x = x.cpu().detach().numpy()
+        #     A = np.zeros((self.state_dim, self.state_dim))
+        #     A[0, 2] = 1.
+        #     A[1, 3] = 1.
+        #     B = np.array([[1, 0], [0, 1], [0, 0], [0, 0]])
+        #     xdot = x @ A.T + u @ B.T
+        #     return xdot
+        # else:
+        #     return torch.cat([x[:, 2:], u], dim=1)
         
         
     def reset(self) -> Data:
@@ -144,9 +145,6 @@ class SimpleCars(MultiAgentEnv):
             
         # record goals
         self._goal = goals
-
-        # add velocity
-        states = torch.cat([states, torch.zeros(self.num_agents, 2, device=self.device)], dim=1)
 
         # store states
         self._states.append(states)
@@ -371,17 +369,18 @@ class SimpleCars(MultiAgentEnv):
     @property
     def state_lim(self) -> Tuple[Tensor, Tensor]:
         low_lim = torch.tensor(
-            [self._xy_min[0], self._xy_min[1], -self._params['speed_limit'], -self._params['speed_limit']],
+            [self._xy_min[0], self._xy_min[1]],
             device=self.device)
         high_lim = torch.tensor(
-            [self._xy_max[0], self._xy_max[1], self._params['speed_limit'], self._params['speed_limit']],
+            [self._xy_max[0], self._xy_max[1]],
             device=self.device)
         return low_lim, high_lim
     
     
     @property
     def action_lim(self) -> Tuple[Tensor, Tensor]:
-        upper_limit = torch.ones(2, device=self.device) * 10.
+        # upper_limit = torch.ones(2, device=self.device) * 10.
+        upper_limit = self._params['speed_limit']
         lower_limit = - upper_limit
         return lower_limit, upper_limit
     
@@ -393,13 +392,8 @@ class SimpleCars(MultiAgentEnv):
 
         if self._K is None:
             # calculate the LQR controller
-            A = np.array([[0., 0., 1., 0.],
-                          [0., 0., 0., 1.],
-                          [0., 0., 0., 0.],
-                          [0., 0., 0., 0.]]) * self.dt + np.eye(self.state_dim)
-            B = np.array([[0., 0.],
-                          [0., 0.],
-                          [1., 0.],
+            A = np.eye(self.state_dim)
+            B = np.array([[1., 0.],
                           [0., 1.]]) * self.dt
             Q = np.eye(self.state_dim)
             R = np.eye(self.action_dim)
