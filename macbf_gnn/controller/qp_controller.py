@@ -19,18 +19,18 @@ class ControllerQP(MultiAgentController):
         )
         self._env = env
         
-    def forward(self, data: Data) -> Tensor:
+    def forward(self, state: Data) -> Tensor:
         action = cp.Variable((self.num_agents, self.action_dim))
         obj = cp.Minimize(cp.sum_squares(action))
-        data_next = self._env.forward_graph(data, action)
+        state_next = self._env.forward(state, action)
         constraints = []
         for agent in range(self.num_agents):
             for other_agent in range(self.num_agents):
                 if agent == other_agent:
                     continue
                 
-                cbf_agent_pair = (data.pos[agent] - data.pos[other_agent])**2 - (2 * self._env._params['car_radius'])**2
-                cbf_next_agent_pair = (data_next.pos[agent] - data_next.pos[other_agent])**2 - (2 * self._env._params['car_radius'])**2
+                cbf_agent_pair = (state[agent] - state[other_agent])**2 - (2 * self._env._params['car_radius'])**2
+                cbf_next_agent_pair = (state_next[agent] - state_next[other_agent])**2 - (2 * self._env._params['car_radius'])**2
                 cbf_agent_pair_dot = (cbf_next_agent_pair - cbf_agent_pair) / self._env.dt
                 agent_pair_constraint = cp.Constraint([cbf_agent_pair_dot + self._env._params['alpha'] * cbf_agent_pair >= 0])
                 constraints.extend(agent_pair_constraint)
