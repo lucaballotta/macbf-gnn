@@ -32,10 +32,10 @@ class ControllerQP(MultiAgentController):
                 cbf_agent_pair = (data.pos[agent] - data.pos[other_agent])**2 - (2 * self._env._params['car_radius'])**2
                 cbf_next_agent_pair = (data_next.pos[agent] - data_next.pos[other_agent])**2 - (2 * self._env._params['car_radius'])**2
                 cbf_agent_pair_dot = (cbf_next_agent_pair - cbf_agent_pair) / self._env.dt
-                agent_pair_constraint = [cbf_agent_pair_dot + self._env._params['alpha'] * cbf_agent_pair >= 0]
-                constraints.append(agent_pair_constraint)
+                agent_pair_constraint = cp.Constraint([cbf_agent_pair_dot + self._env._params['alpha'] * cbf_agent_pair >= 0])
+                constraints.extend(agent_pair_constraint)
                 
         prob = cp.Problem(obj, constraints)
         _ = prob.solve()
         
-        return action
+        return action.value()
