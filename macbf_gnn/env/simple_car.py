@@ -83,7 +83,7 @@ class SimpleCars(MultiAgentEnv):
             'comm_radius': 1.0,
             'buffer_size': 5,  # max number of transmissions (tx delays) stored by cars
             'max_age': 5,  # max age of data stored by cars (older are discarded)
-            'poisson_coeff': .1,
+            'poisson_coeff': .2,
             'test_epi_max_iters': 200
         }
         
@@ -125,8 +125,8 @@ class SimpleCars(MultiAgentEnv):
             # randomly generate goals of agents
             i = 0
             while i < self.num_agents:
-                # candidate = torch.rand(2, device=self.device) * side_length
-                candidate = (torch.rand(2, device=self.device) * 2 - 1) * self._params['max_distance'] + states[i]
+                candidate = torch.rand(2, device=self.device) * side_length
+                # candidate = (torch.rand(2, device=self.device) * 2 - 1) * self._params['max_distance'] + states[i]
                 dist_min = torch.norm(goals - candidate, dim=1).min()
                 if dist_min <= self._params['car_radius'] * 4:
                     continue
