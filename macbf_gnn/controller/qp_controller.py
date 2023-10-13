@@ -40,8 +40,7 @@ class ControllerQP(MultiAgentController):
                 agent_pair_constraint = cbf_agent_pair_dot + self.alpha * cbf_agent_pair >= 0
                 constraints.append(agent_pair_constraint)
                 
-        print(constraints[0])
         prob = cp.Problem(obj, constraints)
-        _ = prob.solve()
+        prob.solve()
         
         return action.value
