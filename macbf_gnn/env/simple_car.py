@@ -83,7 +83,7 @@ class SimpleCars(MultiAgentEnv):
             'comm_radius': 1.0,
             'buffer_size': 5,  # max number of transmissions (tx delays) stored by cars
             'max_age': 5,  # max age of data stored by cars (older are discarded)
-            'poisson_coeff': .1,
+            'poisson_coeff': .2,
             'test_epi_max_iters': 200
         }
         
@@ -163,7 +163,7 @@ class SimpleCars(MultiAgentEnv):
         self.transmit_data(neigh_sizes)
         
         # simulate data reception at cars
-        self.receive_data()
+        self.receive_data(data)
         
         # remove neighbors with age older than maximum allowed
         [car.remove_old_data() for car in self._cars]
@@ -205,7 +205,7 @@ class SimpleCars(MultiAgentEnv):
         self.transmit_data(neigh_sizes)
         
         # simulate data reception at cars
-        self.receive_data()
+        self.receive_data(data)
         
         # remove neighbors with age older than maximum allowed
         [car.remove_old_data() for car in self._cars]
@@ -232,11 +232,13 @@ class SimpleCars(MultiAgentEnv):
             car.store_delay(delay_tx)
             
 
-    def receive_data(self):
-        self._data.available_states = torch.zeros(self.num_agents, 2)
+    def receive_data(self, data):
+        data.available_states = torch.zeros(self.num_agents, self.state_dim)
         for idx_car, car in enumerate(self._cars):
             neighbors_list, delay_list = car.data_delivered()
-            self._data.available_states[idx_car] = self._states[-min(delay_list) - 1][idx_car]
+            if delay_list:
+                data.available_states[idx_car] = self._states[-min(delay_list) - 1][idx_car]
+            
             for idx_neighbors, neighbors in enumerate(neighbors_list):
                 delay_rec = delay_list[idx_neighbors]
                 for neighbor in neighbors:

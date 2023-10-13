@@ -24,7 +24,7 @@ def test(args):
     try:
         settings = read_settings(args.path)
     except TypeError:
-        settings = {'algo': 'nominal', 'num_agents': args.num_agents}
+        settings = {'algo': args.algo, 'num_agents': args.num_agents}
 
     # make environment
     delay_aware = True
@@ -143,6 +143,7 @@ if __name__ == '__main__':
     parser.add_argument('--no-video', action='store_true', default=False)
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--no-edge', action='store_true', default=False)
+    parser.add_argument('--algo', type=str, default='nominal')
 
     # default
     parser.add_argument('--seed', type=int, default=0)
