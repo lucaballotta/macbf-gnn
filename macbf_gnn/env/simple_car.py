@@ -233,7 +233,7 @@ class SimpleCars(MultiAgentEnv):
             
 
     def receive_data(self, data):
-        data.available_states = torch.zeros(self.num_agents, self.state_dim)
+        data.available_states = -torch.ones(self.num_agents, self.state_dim)
         for idx_car, car in enumerate(self._cars):
             neighbors_list, delay_list = car.data_delivered()
             if delay_list:

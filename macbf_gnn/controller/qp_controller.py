@@ -24,8 +24,11 @@ class ControllerQP(MultiAgentController):
         state_next = self._env.forward(state, action)
         constraints = []
         for agent in range(self.num_agents):
+            if state[agent][0] == -1:
+                continue
+            
             for other_agent in range(self.num_agents):
-                if agent == other_agent:
+                if agent == other_agent or state[other_agent][0] == -1:
                     continue
                 
                 cbf_agent_pair = (state[agent] - state[other_agent])**2 - (2 * self._env._params['car_radius'])**2
@@ -34,6 +37,7 @@ class ControllerQP(MultiAgentController):
                 agent_pair_constraint = cp.Constraint([cbf_agent_pair_dot + self.alpha * cbf_agent_pair >= 0])
                 constraints.append(agent_pair_constraint)
                 
+        print(constraints)
         prob = cp.Problem(obj, constraints)
         _ = prob.solve()
         
