@@ -16,7 +16,7 @@ def train(args):
     use_cuda = torch.cuda.is_available() and not args.cpu
     if use_cuda:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
-    device = torch.device('cuda' if use_cuda else 'cpu')
+    device = torch.device('cuda:' + os.environ["CUDA_VISIBLE_DEVICES"] if use_cuda else 'cpu')
     print(f'> Training with {device}')
 
     # make environment

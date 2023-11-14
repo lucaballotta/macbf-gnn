@@ -28,7 +28,7 @@ class SimpleCars(MultiAgentEnv):
         self._actions = deque(maxlen=self._params['buffer_size'])  # actions that generate the states in self._states from previous states
         
         # cars
-        car = SimpleCar(buffer_size=self._params['buffer_size'], max_age=self._params['max_age'])
+        car = SimpleCar(buffer_size=self._params['buffer_size'], max_age=self._params['max_age'], device=self.device)
         self._cars = [car.copy() for _ in range(self.num_agents)]
 
         # builder of the graph
@@ -150,7 +150,7 @@ class SimpleCars(MultiAgentEnv):
         self._states.append(states)
         
         # initialize actions to zero
-        self._actions.append(torch.zeros(self.num_agents, self.action_dim))
+        self._actions.append(torch.zeros(self.num_agents, self.action_dim, device=self.device))
         
         # reset agents' data
         [car.reset_data() for car in self._cars]
@@ -244,6 +244,8 @@ class SimpleCars(MultiAgentEnv):
                 for neighbor in neighbors:
                     state_diff = self._states[-delay_rec - 1][idx_car] - self._states[-delay_rec - 1][neighbor]
                     action_diff = self._actions[-delay_rec - 1][idx_car] - self._actions[-delay_rec - 1][neighbor]
+                    state_diff.to(self.device)
+                    action_diff.to(self.device)
                     action_state_diff = torch.cat([action_diff, state_diff])
                     stored, idx = self._cars[neighbor].store_data(
                         idx_car, action_state_diff, delay_rec, self.delay_aware)
@@ -355,7 +357,7 @@ class SimpleCars(MultiAgentEnv):
                 edge_index[0].append(neighbor)
                 edge_attr.append(car.neighbor_data[neighbor])
                 
-        data.edge_index = torch.tensor(edge_index, dtype=torch.long)
+        data.edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device)
         data.edge_attr = edge_attr
         data.state_diff = data.states[data.edge_index[0]] - data.states[data.edge_index[1]]
         
@@ -439,8 +441,9 @@ class SimpleCars(MultiAgentEnv):
 
 class SimpleCar(Agent):
     
-    def __init__(self, buffer_size, max_age):
+    def __init__(self, buffer_size, max_age, device):
         super().__init__(buffer_size, max_age)
+        self.device = device
         
     def store_data(self, neighbor: int, data: Tensor, delay: int, delay_aware: bool) -> Tuple[bool, int]:
         if delay_aware:
@@ -449,7 +452,7 @@ class SimpleCar(Agent):
             if delay <= self.max_age:
                 stored = True
                 data = torch.reshape(data, (-1,))
-                data = torch.unsqueeze(torch.cat((data, torch.tensor([delay]))), 0)
+                data = torch.unsqueeze(torch.cat((data, torch.tensor([delay], device=self.device))), 0)
                 if neighbor not in self._neighbor_data:
                     self._neighbor_data[neighbor] = data
                     

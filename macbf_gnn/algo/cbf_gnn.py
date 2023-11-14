@@ -88,7 +88,8 @@ class MACBFGNN(Algorithm):
         # models
         self.predictor = Predictor(
             input_dim=self.action_dim + self.state_dim + 1,
-            output_dim=self.state_dim
+            output_dim=self.state_dim,
+            device=self.device
         ).to(device)
         self.cbf = CBFGNN(
             num_agents=self.num_agents,
@@ -101,7 +102,7 @@ class MACBFGNN(Algorithm):
             node_dim=self.node_dim,
             edge_dim=self.edge_dim,
             phi_dim=256,
-            action_dim=self.action_dim
+            action_dim=self.action_dim,
         ).to(device)
 
         # optimizer
@@ -169,7 +170,7 @@ class MACBFGNN(Algorithm):
             return self.actor(data_pred)
             
         else:
-            return torch.zeros(self.num_agents, self.action_dim)
+            return torch.zeros(self.num_agents, self.action_dim, device=self.device)
 
     @torch.no_grad()
     def step(self, data: Data, prob: float) -> Tensor:
@@ -180,7 +181,7 @@ class MACBFGNN(Algorithm):
         self.buffer.append(deepcopy(data), is_safe)
         action = self.act(data)
         if np.random.rand() < prob:
-            action = torch.zeros_like(action)
+            action = torch.zeros_like(action, device=self.device)
         
         return action
 
