@@ -32,6 +32,7 @@ def init_logger(
         seed: int,
         args: dict = None,
         hyper_params: dict = None,
+        env_params: dict = None
 ) -> str:
     """
     Initialize the logger. The logger dir should include the following path:
@@ -100,6 +101,17 @@ def init_logger(
                 log.write(f'  {key1}: {hyper_params[key1]}\n')
     else:
         log.write('hyper_params: using default hyper-parameters')
+        
+    if env_params is not None:
+        log.write('env_params:\n')
+        for key1 in env_params.keys():
+            if type(env_params[key1]) == dict:
+                log.write(f'  {key1}: \n')
+                for key2 in env_params[key1].keys():
+                    log.write(f'    {key2}: {env_params[key1][key2]}\n')
+            else:
+                log.write(f'  {key1}: {env_params[key1]}\n')
+                
     log.close()
 
     return log_path

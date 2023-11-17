@@ -37,6 +37,10 @@ class MultiAgentEnv(ABC):
     @property
     def num_agents(self) -> int:
         return self._num_agents
+    
+    @property
+    def params(self) -> dict:
+        return self._params
 
     @property
     def dt(self) -> float:
@@ -48,6 +52,7 @@ class MultiAgentEnv(ABC):
         """
         return self._dt
     
+    @property
     def delay_aware(self) -> bool:
         """
         Returns

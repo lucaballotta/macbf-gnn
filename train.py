@@ -36,7 +36,7 @@ def train(args):
             'loss_pred_next_ratio_coef': 1.,
             'loss_unsafe_coef': 1.,
             'loss_safe_coef': 1.,
-            'loss_h_dot_coef': .5
+            'loss_h_dot_coef': .7
         }
         print('> Using custom hyper-parameters')
     else:
@@ -44,7 +44,7 @@ def train(args):
         
     # set up logger
     log_path = init_logger(
-        args.log_path, args.env, args.algo, args.seed, vars(args), hyper_params=params
+        args.log_path, args.env, args.algo, args.seed, vars(args), hyper_params=params, env_params=env.params
     )
 
     # build algorithm

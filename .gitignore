@@ -6,3 +6,4 @@ token-github.txt
 wandb/
 records
 test_lstm.py
+saved_models/
