@@ -87,7 +87,7 @@ def test(args):
     for i in range(args.epi):
         print(f'epi: {i}')
         results.append(
-            eval_ctrl_epi(algo.act, env, np.random.randint(100000), not args.no_video, plot_edge=not args.no_edge)
+            eval_ctrl_epi(algo.apply, env, np.random.randint(100000), not args.no_video, plot_edge=not args.no_edge)
         )
     rewards, lengths, video, info = zip(*results)
     video = sum(video, ())
@@ -126,7 +126,8 @@ def test(args):
         verbose += f', safe rate: {safe_rate}'
     print(verbose)
     with open(os.path.join(args.path, 'test_log.csv'), "a") as f:
-        f.write(f'{env.num_agents},{safe_rate},{args.epi}\n')
+        delay_coef = env.params['poisson_coeff']
+        f.write(f'{env.num_agents},{safe_rate},{np.mean(lengths)},{args.epi},{delay_coef},{args.seed}\n')
     print(f'> Done in {time.time() - start_time:.0f}s')
 
 

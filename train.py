@@ -31,7 +31,7 @@ def train(args):
             'alpha': 1.,
             'eps': 0.02,
             'inner_iter': 10,
-            'loss_action_coef': 0.01,
+            'loss_action_coef': 0.005,
             'loss_pred_coef': 1.,
             'loss_pred_next_ratio_coef': 1.,
             'loss_unsafe_coef': 1.,

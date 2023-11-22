@@ -142,7 +142,6 @@ class MACBFGNN(Algorithm):
             )
             # print('')
             # print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
-            # print('actual safe', not torch.any(self._env.unsafe_mask(data)))
             # h = self.cbf(data_pred)
             # print('state', data.state_diff)
             # print('edge attr', data.edge_attr)
@@ -150,7 +149,7 @@ class MACBFGNN(Algorithm):
             # true_state_diff = data.state_diff
             # true_state_diff_norm = torch.norm(true_state_diff, dim=1)
             # pred_err_norm = torch.norm(data_pred.edge_attr - true_state_diff, dim=1)
-            # print('loss pred', torch.mean(pred_err_norm / true_state_diff_norm))
+            # print('loss pred', torch.mean(pred_err_norm / true_state_diff_norm).item())
             # print('cbf', h)
             # action = self.actor(data_pred)
             # data_next = self._env.forward_graph(data, action)
@@ -163,10 +162,12 @@ class MACBFGNN(Algorithm):
             # print('next cbf', h_next)
             # action = self.actor(data_pred)
             # print('action', action)
-            # print('action norm', torch.mean(torch.square(action).sum(dim=1)))
+            # print('action norm', torch.square(action).sum(dim=1))
             # h_dot = (h_next - h) / self._env.dt
             # max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + self.params['eps'])
             # print('loss_h_dot', torch.mean(max_val_h_dot).item())
+            # print('actual safe', not torch.any(self._env.unsafe_mask(data)))
+            # print('CBF-safe', torch.all(h>0).item())
             return self.actor(data_pred)
             
         else:
@@ -383,18 +384,38 @@ class MACBFGNN(Algorithm):
         self.actor.load_state_dict(torch.load(os.path.join(load_dir, 'actor.pkl'), map_location=self.device))
 
 
-    '''def apply(self, data: Data) -> Tensor:
-        h = self.cbf(data).detach()
-        action = self.actor(data).detach()
-        nominal = torch.zeros_like(action)
+    def apply(self, data: Data) -> Tensor:
+        if data.edge_attr:
+            data_pred = Data(
+                    x=data.x,
+                    edge_index=data.edge_index,
+                    edge_attr=self.predictor(data.edge_attr),
+                    u_ref=data.u_ref
+                )
+            h = self.cbf(data_pred).detach()
+            action = self.actor(data_pred).detach()
+            # safe_action_mask = torch.sign(torch.relu(h - .02))
+            nominal = torch.zeros_like(action, device=self.device)
+            data_next = self._env.forward_graph(data, nominal)
+            data_next_pred = Data(
+                        x=data_next.x,
+                        edge_index=data_next.edge_index,
+                        edge_attr=self.predictor(data_next.edge_attr)
+                    )
+            h_next = self.cbf(data_next_pred)
+            h_dot = (h_next - h) / self._env.dt
+            safe_nominal_mask = torch.sign(torch.relu(h_dot + self.params['alpha'] * h - self.params['eps'])).detach()
+            return nominal * safe_nominal_mask + action * torch.logical_not(safe_nominal_mask)
 
-        data_next = self._env.forward_graph(data, nominal)
-        h_next = self.cbf(data_next)
-        h_dot = (h_next - h) / self._env.dt
-        max_val_h_dot = torch.relu((-h_dot - self.params['alpha'] * h))
-        loss_h_dot = torch.mean(max_val_h_dot)
-        if loss_h_dot <= 0:
-            return nominal
+            # print('')
+            # print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
+            # print('cbf', h)
+            # print('actual safe', not torch.any(self._env.unsafe_mask(data)))
+            # print('CBF-safe', torch.all(h>0).item())
+            # return nominal * safe_action_mask + action * torch.logical_not(safe_action_mask)
+
+        else:
+            return torch.zeros(self.num_agents, self.action_dim, device=self.device)
 
         actions = list(torch.split(action, 1, dim=0))
         optim = []
@@ -406,7 +427,7 @@ class MACBFGNN(Algorithm):
 
         # consider the satisfaction of h_dot condition
         i_iter = 0
-        max_iter = 30
+        max_iter = 0
         while True:
             action = torch.cat(actions, dim=0)
             data_next = self._env.forward_graph(data, action)
@@ -428,4 +449,4 @@ class MACBFGNN(Algorithm):
                     actions[i].requires_grad = True
                 i_iter += 1
 
-        return action'''
+        return action
