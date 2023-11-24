@@ -31,11 +31,11 @@ def train(args):
             'alpha': 1.,
             'eps': 0.02,
             'inner_iter': 10,
-            'loss_action_coef': 0.005,
+            'loss_action_coef': 0.0001,
             'loss_pred_coef': 1.,
             'loss_pred_next_ratio_coef': 1.,
             'loss_unsafe_coef': 1.,
-            'loss_safe_coef': 1.,
+            'loss_safe_coef': .9,
             'loss_h_dot_coef': .7
         }
         print('> Using custom hyper-parameters')

@@ -83,7 +83,7 @@ class SimpleCars(MultiAgentEnv):
             'comm_radius': 1.0,
             'buffer_size': 5,  # max number of transmissions (tx delays) stored by cars
             'max_age': 5,  # max age of data stored by cars (older are discarded)
-            'poisson_coeff': .5
+            'poisson_coeff': .8
         }
         
         
