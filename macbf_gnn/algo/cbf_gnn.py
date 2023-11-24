@@ -404,7 +404,7 @@ class MACBFGNN(Algorithm):
                     )
             h_next = self.cbf(data_next_pred)
             h_dot = (h_next - h) / self._env.dt
-            safe_nominal_mask = torch.sign(torch.relu(h_dot + self.params['alpha'] * h - .5*self.params['eps'])).detach()
+            safe_nominal_mask = torch.sign(torch.relu(h_dot + self.params['alpha'] * h - self.params['eps'])).detach()
             return nominal * safe_nominal_mask + action * torch.logical_not(safe_nominal_mask)
 
             # print('')

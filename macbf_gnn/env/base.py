@@ -402,7 +402,7 @@ class MultiAgentEnv(ABC):
 
 class Agent(ABC):
     
-    def __init__(self, buffer_size, max_age):
+    def __init__(self, buffer_size: int, max_age: int, device: torch.device):
         super(Agent, self).__init__()
         self.buffer_size = buffer_size
         self.max_age = max_age
@@ -410,46 +410,69 @@ class Agent(ABC):
         self._delays = deque(maxlen = self.buffer_size)
         self._neighbor_data = dict()
         self._past_states = dict()
+        self.device = device
         
     @property
     def neighbor_data(self):
         return self._neighbor_data
     
+    
+    def copy(self):
+        return copy.deepcopy(self)
+        
+
+    def data_delivered(self) -> Tuple[List[List[int]], List[int]]:
+        """
+        Select neighbors that receive data at current time step
+
+        Returns
+        -------
+        neighbors: List[List[int]],
+            indices of neighbors that receive the data
+        delays: List[int],
+            communication delay of received data
+        """
+        neighbors = []
+        delays = []
+        for idx, delay in enumerate(self._delays):
+            if delay == len(self._delays) - 1 - idx:
+                neighbors.append(self._neighbors[idx])
+                delays.append(delay)
+                
+        return neighbors, delays
+    
+
+    def remove_old_data(self):
+        """
+        Remove stored data whose AoI is too large.
+        """
+        old_neighbors = []
+        for neighbor in self._neighbor_data:
+            if self._neighbor_data[neighbor][-1][-1] > self.max_age:
+                old_neighbors.append(neighbor)
+                
+        for neighbor in old_neighbors:
+            del self._neighbor_data[neighbor]
+            
+        for neighbor in self._neighbor_data:
+            idx = 0 
+            while self._neighbor_data[neighbor][idx][-1] > self.max_age:
+                idx += 1
+                
+            self._neighbor_data[neighbor] = self._neighbor_data[neighbor][idx:]
+
+
     def reset_data(self):
         self._neighbors.clear()
         self._delays.clear()
         self._neighbor_data.clear()
         self._past_states.clear()
-    
-    def copy(self):
-        return copy.deepcopy(self)
-    
-    def store_delay(self, delay: int):
-        """
-        Store communication delay for transmission started at current time.
-
-        Parameters
-        ----------
-        delay: int,
-            communication delay
-        """
-        self._delays.append(delay)
         
-    def store_neighbors(self, neighbors: List[int]):
+    
+    def store_data(self, neighbor: int, data: Tensor, delay: int, delay_aware: bool) -> Tuple[bool, int]:
         """
-        Store agents to which data are transmitted at current time.
-
-        Parameters
-        ----------
-        neighbors: List[int],
-            indices of neighbors
-        """
-        self._neighbors.append(neighbors)
-        
-    @abstractmethod
-    def store_data(self, neighbor: int, data: Tensor, delay: int) -> Tuple[bool, int]:
-        """
-        Store state differences that have been received from neighbors at the current time step.
+        Store data received from neighbors at the current time step.
+        Each data item is stored as [data_item, delay]
 
         Parameters
         ----------
@@ -459,6 +482,8 @@ class Agent(ABC):
             state difference w.r.t. state received from the neighbor
         delay: int,
             communication delay after which data are received
+        delay_aware: bool,
+            True if agents are aware of communication delays
             
         Returns
         -------
@@ -469,9 +494,61 @@ class Agent(ABC):
             
             None if stored is False
         """
-        pass
+        if delay_aware:
+            stored = False
+            idx = None
+            if delay <= self.max_age:
+                stored = True
+                data = torch.reshape(data, (-1,))
+                data = torch.unsqueeze(torch.cat((data, torch.tensor([delay], device=self.device))), 0)
+                if neighbor not in self._neighbor_data:
+                    self._neighbor_data[neighbor] = data
+                    
+                else:
+                    
+                    # insertionSort: oldest data first
+                    idx = 0
+                    while self._neighbor_data[neighbor][idx][-1] > delay:
+                        idx += 1
+                        if idx == len(self._neighbor_data[neighbor]):
+                            break
+
+                    previous_data = self._neighbor_data[neighbor]
+                    self._neighbor_data[neighbor] = torch.cat(
+                        (previous_data[:idx], data, previous_data[idx:]))
+                    
+        else:
+            stored = True
+            idx = 0
+            self._neighbor_data[neighbor] = data
+        
+        return stored, idx
     
-    @abstractmethod
+
+    def store_delay(self, delay: int):
+        """
+        Store communication delay for transmission started at current time.
+
+        Parameters
+        ----------
+        delay: int,
+            communication delay
+        """
+        self._delays.append(delay)
+
+
+    def store_neighbors(self, neighbors: List[int]):
+        """
+        Store agents to which data are transmitted at current time.
+
+        Parameters
+        ----------
+        neighbors: List[int],
+            indices of neighbors
+        """
+        self._neighbors.append(neighbors)
+
+
     def store_states(self, self_state: Tensor, neighbor: int, neighbor_state: Tensor, idx: int):
         """
         Store states that have been received from neighbors at the current time step.
@@ -487,18 +564,22 @@ class Agent(ABC):
         idx: int,
             location where to store states in self._past_states[neighbor]
         """
-        pass
+        self_state = torch.reshape(self_state, (-1,))
+        neighbor_state = torch.reshape(neighbor_state, (-1,))
+        new_data = torch.unsqueeze(torch.stack((self_state, neighbor_state)), 0)
+        if neighbor not in self._past_states:
+            self._past_states[neighbor] = new_data
             
-    @abstractmethod
+        else:
+            previous_past_states = self._past_states[neighbor]
+            self._past_states[neighbor] = torch.cat(
+                (previous_past_states[:idx], new_data, previous_past_states[idx:])) 
+            
+    
     def update_ages(self):
         """
         Update AoI of stored data.
         """
-        pass
-                
-    @abstractmethod
-    def remove_old_data(self):
-        """
-        Remove stored data whose AoI is too large.
-        """
-        pass
+        for neighbor in self.neighbor_data:
+            for state_info in self.neighbor_data[neighbor]:
+                state_info[-1] += 1
