@@ -155,7 +155,11 @@ class SimpleCar(MultiAgentEnv):
         [car.reset_data() for car in self._cars]
 
         # build graph
-        data = Data(x=torch.zeros_like(states), pos=states[:, :2], states=states)
+        data = Data(
+            x=torch.zeros_like(states), 
+            pos=states[:, :2], 
+            states=states
+        )
         neigh_sizes = self.add_communication_links(data)
         
         # simulate transmission of delayed data among cars
@@ -196,7 +200,11 @@ class SimpleCar(MultiAgentEnv):
             self._states.append(state)
         
         # construct graph using the new states
-        data = Data(x=torch.zeros_like(state), pos=state[:, :2], states=state)
+        data = Data(
+            x=torch.zeros_like(state), 
+            pos=state[:, :2], 
+            states=state
+        )
         neigh_sizes = self.add_communication_links(data)
         
         # update age of received data

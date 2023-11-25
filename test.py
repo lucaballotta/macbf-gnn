@@ -31,10 +31,10 @@ def test(args):
         # make environment
         delay_aware = True
         env = make_env(
-            env=settings['env'] if args.env is None else args.env,
-            num_agents=settings['num_agents'] if n is None else n,
-            device=device,
-            delay_aware=delay_aware
+            settings['env'] if args.env is None else args.env,
+            settings['num_agents'] if n is None else n,
+            device,
+            delay_aware
         )
         # env.demo(3)
         if args.demo is None:
@@ -44,15 +44,15 @@ def test(args):
 
         # build algorithm
         algo = make_algo(
-            algo=settings['algo'],
-            env=env,
-            num_agents=settings['num_agents'] if n is None else n,
-            node_dim=env.node_dim,
-            edge_dim=env.edge_dim,
-            state_dim=env.state_dim,
-            action_dim=env.action_dim,
-            device=device,
-            hyperparams=settings['hyper_params'] if 'hyper_params' in settings.keys() else None
+            settings['algo'],
+            env,
+            settings['num_agents'] if n is None else n,
+            env.node_dim,
+            env.edge_dim,
+            env.state_dim,
+            env.action_dim,
+            device,
+            settings['hyper_params'] if 'hyper_params' in settings.keys() else None
         )
         if args.path is None:
             assert args.env is not None and n is not None
@@ -89,7 +89,13 @@ def test(args):
         for i in range(args.epi):
             print(f'epi: {i}')
             results.append(
-                eval_ctrl_epi(algo.act, env, np.random.randint(100000), not args.no_video, plot_edge=not args.no_edge)
+                eval_ctrl_epi(
+                    algo.act,
+                    env,
+                    np.random.randint(100000), 
+                    not args.no_video, 
+                    not args.no_edge
+                )
             )
         rewards, lengths, video, info = zip(*results)
         video = sum(video, ())

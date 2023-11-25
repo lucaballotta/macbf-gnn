@@ -185,7 +185,11 @@ class SimpleDrone(MultiAgentEnv):
             self._states.append(state)
         
         # construct graph using the new states
-        data = Data(x=torch.zeros_like(state), pos=state, states=state)
+        data = Data(
+            x=torch.zeros_like(state), 
+            pos=state, 
+            states=state
+        )
         neigh_sizes = self.add_communication_links(data)
         
         # update age of received data
