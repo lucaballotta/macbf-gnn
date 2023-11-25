@@ -51,9 +51,6 @@ class CBFGNN(nn.Module):
         
         return h
 
-    def forward_explict(self, x: Tensor, edge_index: Tensor) -> Tensor:
-        pass
-
     def attention(self, data: Data) -> Tensor:
         return self.feat_transformer.module_0.attention(data)
 
@@ -94,7 +91,7 @@ class MACBFGNN(Algorithm):
             edge_dim=self.edge_dim,
             phi_dim=256
         ).to(device)
-        self.actor = ControllerGNN(
+        self.controller = ControllerGNN(
             num_agents=self.num_agents,
             node_dim=self.node_dim,
             edge_dim=self.edge_dim,
@@ -105,7 +102,7 @@ class MACBFGNN(Algorithm):
         # optimizer
         self.optim_predictor = Adam(self.predictor.parameters(), lr=1e-3)
         self.optim_cbf = Adam(self.cbf.parameters(), lr=3e-4)
-        self.optim_actor = Adam(self.actor.parameters(), lr=1e-3)
+        self.optim_actor = Adam(self.controller.parameters(), lr=1e-3)
 
         # buffer to store data used in training
         self.buffer = Buffer()  # buffer for current episode
@@ -166,11 +163,11 @@ class MACBFGNN(Algorithm):
                 # print('loss_h_dot', torch.mean(max_val_h_dot).item())
                 # print('actual safe', not torch.any(self._env.unsafe_mask(data)))
                 # print('CBF-safe', torch.all(h>0).item())
-                return self.actor(input_data)
+                return self.controller(input_data)
             
             else:
                 data.edge_attr = torch.stack(data.edge_attr)
-                return self.actor(data)
+                return self.controller(data)
             
         else:
             return torch.zeros(self.num_agents, self.action_dim, device=self.device)
@@ -258,7 +255,7 @@ class MACBFGNN(Algorithm):
                     acc_safe = torch.tensor(1.0).type_as(h_safe)
                     
                 # derivative loss h_dot + \alpha h > 0
-                actions = self.actor(input_data)
+                actions = self.controller(input_data)
                 graphs_next = self._env.forward_graph(graphs, actions)
                 graphs_next.edge_attr.requires_grad = True
                 true_state_diff_next = graphs_next.state_diff
@@ -305,7 +302,7 @@ class MACBFGNN(Algorithm):
                     self.optim_actor.zero_grad(set_to_none=True)
                     loss_ctrl.backward()
                     torch.nn.utils.clip_grad_norm_(self.cbf.parameters(), 1e-3)
-                    torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1e-3)
+                    torch.nn.utils.clip_grad_norm_(self.controller.parameters(), 1e-3)
                     self.optim_cbf.step()
                     self.optim_actor.step()
 
@@ -353,26 +350,26 @@ class MACBFGNN(Algorithm):
             os.mkdir(save_dir)
         torch.save(self.predictor.state_dict(), os.path.join(save_dir, 'predictor.pkl'))
         torch.save(self.cbf.state_dict(), os.path.join(save_dir, 'cbf.pkl'))
-        torch.save(self.actor.state_dict(), os.path.join(save_dir, 'actor.pkl'))
+        torch.save(self.controller.state_dict(), os.path.join(save_dir, 'actor.pkl'))
 
 
     def load(self, load_dir: str):
         assert os.path.exists(load_dir)
         self.predictor.load_state_dict(torch.load(os.path.join(load_dir, 'predictor.pkl'), map_location=self.device))
         self.cbf.load_state_dict(torch.load(os.path.join(load_dir, 'cbf.pkl'), map_location=self.device))
-        self.actor.load_state_dict(torch.load(os.path.join(load_dir, 'actor.pkl'), map_location=self.device))
+        self.controller.load_state_dict(torch.load(os.path.join(load_dir, 'actor.pkl'), map_location=self.device))
 
 
     def apply(self, data: Data) -> Tensor:
         if data.edge_attr:
-            data_pred = Data(
+            input_data = Data(
                     x=data.x,
                     edge_index=data.edge_index,
                     edge_attr=self.predictor(data.edge_attr),
                     u_ref=data.u_ref
                 )
-            h = self.cbf(data_pred).detach()
-            action = self.actor(data_pred).detach()
+            h = self.cbf(input_data).detach()
+            action = self.controller(input_data).detach()
             nominal = torch.zeros_like(action, device=self.device)
             data_next = self._env.forward_graph(data, nominal)
             data_next_pred = Data(
