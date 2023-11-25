@@ -88,7 +88,7 @@ class DubinsCar(MultiAgentEnv):
             'max_distance': 1.5,  # maximum moving distance to goal
             'area_size': 3.0,
             'car_radius': 0.05,
-            'dist2goal': 0.05,
+            'dist2goal': 0.02,
             'comm_radius': 1.0,
             'buffer_size': 5,  # max number of transmissions (tx delays) stored by cars
             'max_age': 5,  # max age of data stored by cars (older are discarded)
@@ -96,21 +96,18 @@ class DubinsCar(MultiAgentEnv):
         }
     
 
-    def dynamics(self, x: Tensor, u: Union[Tensor, Expression]) -> Union[Tensor, Expression]:
-        if isinstance(u, Expression):
-            raise NotImplementedError
+    def dynamics(self, x: Tensor, u: Tensor) -> Tensor:
+        xdot = torch.zeros_like(x)
+        xdot[:, 0] = x[:, 3] * torch.cos(x[:, 2])
+        xdot[:, 1] = x[:, 3] * torch.sin(x[:, 2])
+        xdot[:, 2] = u[:, 0] * 10
+        xdot[:, 3] = u[:, 1]
+        if x.shape[0] == self.num_agents:
+            reach = torch.less(torch.norm(x[:, :2] - self._goal[:, :2], dim=1), self._params['dist2goal'])
+            return xdot * torch.logical_not(reach).unsqueeze(1).repeat(1, self.state_dim)
         
         else:
-            xdot = torch.zeros_like(x)
-            xdot[:, 0] = x[:, 3] * torch.cos(x[:, 2])
-            xdot[:, 1] = x[:, 3] * torch.sin(x[:, 2])
-            xdot[:, 2] = u[:, 0] * 10
-            xdot[:, 3] = u[:, 1]
-            if x.shape[0] == self.num_agents:
-                reach = torch.less(torch.norm(x[:, :2] - self._goal[:, :2], dim=1), self._params['dist2goal'])
-                return xdot * torch.logical_not(reach).unsqueeze(1).repeat(1, self.state_dim)
-            else:
-                return xdot
+            return xdot
             
 
     def reset(self) -> Data:
@@ -153,10 +150,7 @@ class DubinsCar(MultiAgentEnv):
         self._goal = goals
 
         # store states
-        states_store = torch.cat([states[:, :3],
-                                  (states[:, 3] * torch.cos(states[:, 2])).unsqueeze(1),
-                                  (states[:, 3] * torch.sin(states[:, 2])).unsqueeze(1)], dim=1)
-        self._states.append(states_store)
+        self._states.append(states)
 
         # initialize actions to zero
         self._actions.append(torch.zeros(self.num_agents, self.action_dim, device=self.device))
@@ -165,7 +159,11 @@ class DubinsCar(MultiAgentEnv):
         [car.reset_data() for car in self._cars]
 
         # build graph
-        data = Data(x=torch.zeros(self.num_agents, self.node_dim).type_as(states), pos=states[:, :2], states=states)
+        data = Data(
+            x=torch.zeros(self.num_agents, self.node_dim).type_as(states), 
+            pos=states[:, :2], 
+            states=states
+        )
         neigh_sizes = self.add_communication_links(data)
 
         # simulate transmission of delayed data among cars
@@ -174,8 +172,10 @@ class DubinsCar(MultiAgentEnv):
         # simulate data reception at cars
         self.receive_data(data)
         
-        # remove neighbors with age older than maximum allowed
-        [car.remove_old_data() for car in self._cars]
+        if self.delay_aware:
+
+            # remove neighbors with age older than maximum allowed
+            [car.remove_old_data() for car in self._cars]
         
         # store current edge attributes with received delayed data
         self._data = self.add_edge_attributes(data)
@@ -200,13 +200,14 @@ class DubinsCar(MultiAgentEnv):
         with torch.no_grad():
             self._actions.append(action)
             state = self.forward(self.state, action)
-            state_store = torch.cat([state[:, :3],
-                                     (state[:, 3] * torch.cos(state[:, 2])).unsqueeze(1),
-                                     (state[:, 3] * torch.sin(state[:, 2])).unsqueeze(1)], dim=1)
-            self._states.append(state_store)
+            self._states.append(state)
         
         # construct graph using the new states
-        data = Data(x=torch.zeros(self.num_agents, self.node_dim).type_as(state), pos=state[:, :2], states=state)
+        data = Data(
+            x=torch.zeros(self.num_agents, self.node_dim).type_as(state), 
+            pos=state[:, :2], 
+            states=state
+        )
         neigh_sizes = self.add_communication_links(data)
 
         # update age of received data
@@ -255,14 +256,24 @@ class DubinsCar(MultiAgentEnv):
             for idx_neighbors, neighbors in enumerate(neighbors_list):
                 delay_rec = delay_list[idx_neighbors]
                 for neighbor in neighbors:
-                    state_diff = self._states[-delay_rec - 1][idx_car] - self._states[-delay_rec - 1][neighbor]
-                    action_diff = self._actions[-delay_rec - 1][idx_car] - self._actions[-delay_rec - 1][neighbor]
+                    state = self._states[-delay_rec - 1]
+                    state_aug = torch.cat([state[:, :3],
+                                           (state[:, 3] * torch.cos(state[:, 2])).unsqueeze(1),
+                                           (state[:, 3] * torch.sin(state[:, 2])).unsqueeze(1)], dim=1
+                                        ).to(self.device)
+                    state_diff = state_aug[idx_car] - state_aug[neighbor]
                     state_diff.to(self.device)
-                    action_diff.to(self.device)
-                    action_state_diff = torch.cat([action_diff, state_diff])
+                    if self._delay_aware:
+                        action_diff = self._actions[-delay_rec - 1][idx_car] - self._actions[-delay_rec - 1][neighbor]
+                        action_diff.to(self.device)
+                        stored_data = torch.cat([action_diff, state_diff])
+                    
+                    else:
+                        stored_data = state_diff
+                    
                     self._cars[neighbor].store_data(
-                        idx_car, action_state_diff, delay_rec, self.delay_aware)
-          
+                        idx_car, stored_data, delay_rec, self.delay_aware)
+                    
     
     def forward_graph(self, data: Data, action: Tensor) -> Data:
         
@@ -279,7 +290,11 @@ class DubinsCar(MultiAgentEnv):
             states=state,
             edge_index=data.edge_index
         )
-        data_next.state_diff = data_next.states[data_next.edge_index[0]] - data_next.states[data_next.edge_index[1]]
+        state_aug = torch.cat([state[:, :3],
+                               (state[:, 3] * torch.cos(state[:, 2])).unsqueeze(1),
+                               (state[:, 3] * torch.sin(state[:, 2])).unsqueeze(1)], dim=1
+                            ).to(self.device)
+        data_next.state_diff = state_aug[data_next.edge_index[0]] - state_aug[data_next.edge_index[1]]
 
         # increase age of all data
         if isinstance(data.edge_attr, PackedSequence):
@@ -374,7 +389,11 @@ class DubinsCar(MultiAgentEnv):
                 
         data.edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device)
         data.edge_attr = edge_attr
-        data.state_diff = data.states[data.edge_index[0]] - data.states[data.edge_index[1]]
+        state_aug = torch.cat([data.states[:, :3],
+                               (data.states[:, 3] * torch.cos(data.states[:, 2])).unsqueeze(1),
+                               (data.states[:, 3] * torch.sin(data.states[:, 2])).unsqueeze(1)], dim=1
+                            ).to(self.device)
+        data.state_diff = state_aug[data.edge_index[0]] - state_aug[data.edge_index[1]]
         
         return data
     
@@ -427,9 +446,7 @@ class DubinsCar(MultiAgentEnv):
             safe = torch.greater(dist, 4 * self._params['car_radius'])
             mask[self.num_agents * i: self.num_agents * (i + 1)] = torch.min(safe, dim=1)[0]
 
-        mask = mask.bool()
-
-        return mask
+        return mask.bool()
 
 
     def unsafe_mask(self, data: Data) -> Tensor:
@@ -449,9 +466,9 @@ class DubinsCar(MultiAgentEnv):
 
             # dangerous direction
             warn_zone = torch.less(dist, warn_dist)
-            pos_vec = pos_diff / (torch.norm(pos_diff, dim=2, keepdim=True) + 0.0001)  # [i, j]: j -> i
+            pos_vec = pos_diff / (torch.norm(pos_diff, dim=2, keepdim=True) + 0.0001)
             theta_state = data.states[self.num_agents * i: self.num_agents * (i + 1), 2].reshape(self.num_agents, 1)
-            theta_vec = torch.cat([torch.cos(theta_state), torch.sin(theta_state)], dim=1).repeat(self.num_agents, 1, 1)  # [i, j]: theta[j]
+            theta_vec = torch.cat([torch.cos(theta_state), torch.sin(theta_state)], dim=1).repeat(self.num_agents, 1, 1)
             inner_prod = torch.sum(pos_vec * theta_vec, dim=2)
             unsafe_threshold = torch.cos(torch.asin(self._params['car_radius'] * 2 / (dist + 0.0000001)))
             unsafe = torch.greater(inner_prod, unsafe_threshold)
@@ -472,7 +489,5 @@ class DubinsCar(MultiAgentEnv):
             dist += torch.eye(dist.shape[0], device=self.device) * (2 * self._params['car_radius'] + 1)
             collision = torch.less(dist, 2 * self._params['car_radius'])
             mask[self.num_agents * i: self.num_agents * (i + 1)] = torch.max(collision, dim=1)[0]
-        
-        mask = mask.bool()
 
-        return mask
+        return mask.bool()

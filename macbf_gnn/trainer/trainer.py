@@ -61,8 +61,6 @@ class Trainer:
         train_counter = train_counter_max
         verbose = None
         for step in tqdm(range(1, steps + 1), ncols=80):
-            # data_u_ref = Data(u_ref=self.env.u_ref(data))
-            # data.update(data_u_ref)
             data.u_ref = self.env.u_ref(data)
             action = self.algo.step(data, prob=1 - (step - 1) / steps)
             next_data, reward, done, info = self.env.step(action)

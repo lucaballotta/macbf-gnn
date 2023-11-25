@@ -81,7 +81,6 @@ class SimpleCar(MultiAgentEnv):
     @property
     def default_params(self) -> dict:
         return {
-            'm': 1.0,  # mass of the car
             'speed_limit': 0.4,  # maximum speed
             'max_distance': 1.5,  # maximum moving distance to goal
             'area_size': 3.0,
@@ -95,7 +94,13 @@ class SimpleCar(MultiAgentEnv):
         
         
     def dynamics(self, x: Tensor, u: Union[Tensor, Expression]) -> Union[Tensor, Expression]:
-        return u
+        xdot = u
+        if x.shape[0] == self.num_agents:
+            reach = torch.less(torch.norm(x[:, :2] - self._goal[:, :2], dim=1), self._params['dist2goal'])
+            return xdot * torch.logical_not(reach).unsqueeze(1).repeat(1, self.state_dim)
+        
+        else:
+            return xdot
         
         
     def reset(self) -> Data:
@@ -159,8 +164,10 @@ class SimpleCar(MultiAgentEnv):
         # simulate data reception at cars
         self.receive_data(data)
         
-        # remove neighbors with age older than maximum allowed
-        [car.remove_old_data() for car in self._cars]
+        if self.delay_aware:
+
+            # remove neighbors with age older than maximum allowed
+            [car.remove_old_data() for car in self._cars]
         
         # store current edge attributes with received delayed data
         self._data = self.add_edge_attributes(data)
@@ -239,12 +246,17 @@ class SimpleCar(MultiAgentEnv):
                 delay_rec = delay_list[idx_neighbors]
                 for neighbor in neighbors:
                     state_diff = self._states[-delay_rec - 1][idx_car] - self._states[-delay_rec - 1][neighbor]
-                    action_diff = self._actions[-delay_rec - 1][idx_car] - self._actions[-delay_rec - 1][neighbor]
                     state_diff.to(self.device)
-                    action_diff.to(self.device)
-                    action_state_diff = torch.cat([action_diff, state_diff])
+                    if self._delay_aware:
+                        action_diff = self._actions[-delay_rec - 1][idx_car] - self._actions[-delay_rec - 1][neighbor]
+                        action_diff.to(self.device)
+                        stored_data = torch.cat([action_diff, state_diff])
+                    
+                    else:
+                        stored_data = state_diff
+
                     self._cars[neighbor].store_data(
-                        idx_car, action_state_diff, delay_rec, self.delay_aware)
+                        idx_car, stored_data, delay_rec, self.delay_aware)
                     
 
     def forward_graph(self, data: Data, action: Tensor) -> Data:
@@ -386,9 +398,8 @@ class SimpleCar(MultiAgentEnv):
             dist += torch.eye(dist.shape[0], device=self.device) * (2 * self._params['car_radius'] + 1)
             safe = torch.greater(dist, 4 * self._params['car_radius'])  # 3 is a hyperparameter
             mask[self.num_agents * i: self.num_agents * (i + 1)] = torch.min(safe, dim=1)[0]
-        mask = mask.bool()
 
-        return mask
+        return mask.bool()
     
     
     def unsafe_mask(self, data: Data) -> Tensor:
@@ -401,7 +412,6 @@ class SimpleCar(MultiAgentEnv):
             dist += torch.eye(dist.shape[0], device=self.device) * (2 * self._params['car_radius'] + 1)
             collision = torch.less(dist, 2 * self._params['car_radius'])
             mask[self.num_agents * i: self.num_agents * (i + 1)] = torch.max(collision, dim=1)[0]
-        mask = mask.bool()
         
-        return mask
+        return mask.bool()
     

@@ -1,7 +1,6 @@
 import torch.nn as nn
 
 from torch_geometric.nn import Sequential
-from torch_geometric.nn.conv.transformer_conv import TransformerConv
 from torch import Tensor, cat
 from torch_geometric.data import Data
 

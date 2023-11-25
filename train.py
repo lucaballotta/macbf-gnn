@@ -9,6 +9,7 @@ from macbf_gnn.trainer.utils import set_seed, init_logger, read_params
 
 
 def train(args):
+
     # set random seed
     set_seed(args.seed)
 
@@ -19,24 +20,34 @@ def train(args):
     device = torch.device('cuda:' + os.environ["CUDA_VISIBLE_DEVICES"] if use_cuda else 'cpu')
     print(f'> Training with {device}')
 
-    # make environment
+    # set up environment
     delay_aware = True
-    env = make_env(args.env, args.num_agents, device, delay_aware=delay_aware)
-    env_test = make_env(args.env, args.num_agents, device, delay_aware=delay_aware)
+    env = make_env(
+        args.env,
+        args.num_agents,
+        device,
+        delay_aware
+    )
+    env_test = make_env(
+        args.env,
+        args.num_agents,
+        device,
+        delay_aware
+    )
 
     # set training params
-    params = None #read_params(args.env)
-    if params is None:
-        params = {  # set up custom hyper-parameters
+    hyper_params = None #read_params(args.env)
+    if hyper_params is None:
+        hyper_params = {  # set up custom hyper-parameters
             'alpha': 1.,
             'eps': 0.02,
             'inner_iter': 10,
-            'loss_action_coef': 0.0001,
+            'loss_action_coef': 0.001,
             'loss_pred_coef': 1.,
             'loss_pred_next_ratio_coef': 1.,
             'loss_unsafe_coef': 1.,
-            'loss_safe_coef': .9,
-            'loss_h_dot_coef': .7
+            'loss_safe_coef': 1.,
+            'loss_h_dot_coef': .9
         }
         print('> Using custom hyper-parameters')
     else:
@@ -44,23 +55,37 @@ def train(args):
         
     # set up logger
     log_path = init_logger(
-        args.log_path, args.env, args.algo, args.seed, vars(args), hyper_params=params, env_params=env.params
+        args.log_path, 
+        args.env, 
+        args.algo, 
+        args.seed, 
+        vars(args), 
+        hyper_params, 
+        env.params
     )
 
-    # build algorithm
+    # set up algorithm
     algo = make_algo(
-        args.algo, env, args.num_agents, env.node_dim, env.edge_dim, env.state_dim, env.action_dim, device, hyperparams=params
+        args.algo, 
+        env, 
+        args.num_agents, 
+        env.node_dim, 
+        env.edge_dim, 
+        env.state_dim, 
+        env.action_dim, 
+        device, 
+        hyper_params
     )
 
     # set up trainer
     trainer = Trainer(
-        env=env,
-        env_test=env_test,
-        algo=algo,
-        log_dir=log_path
+        env,
+        env_test,
+        algo,
+        log_path
     )
 
-    # start training
+    # run training
     trainer.train(args.steps, eval_interval=args.steps // 20, eval_epi=0)
 
 
