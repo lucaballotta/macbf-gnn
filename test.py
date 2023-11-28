@@ -34,7 +34,7 @@ def test(args):
             settings['env'] if args.env is None else args.env,
             settings['num_agents'] if n is None else n,
             device,
-            delay_aware
+            delay_aware=delay_aware
         )
         # env.demo(3)
         if args.demo is None:
@@ -52,7 +52,7 @@ def test(args):
             env.state_dim,
             env.action_dim,
             device,
-            settings['hyper_params'] if 'hyper_params' in settings.keys() else None
+            hyperparams=settings['hyper_params'] if 'hyper_params' in settings.keys() else None
         )
         if args.path is None:
             assert args.env is not None and n is not None

@@ -146,7 +146,7 @@ class MACBFGNN(Algorithm):
                 # pred_err_norm = torch.norm(data_pred.edge_attr - true_state_diff, dim=1)
                 # print('loss pred', torch.mean(pred_err_norm / true_state_diff_norm).item())
                 # print('cbf', h)
-                # action = self.actor(data_pred)
+                # action = self.controller(input_data)
                 # data_next = self._env.forward_graph(data, action)
                 # input_cbf_next = Data(
                 #     x=data_next.x,

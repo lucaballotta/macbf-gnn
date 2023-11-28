@@ -26,13 +26,13 @@ def train(args):
         args.env,
         args.num_agents,
         device,
-        delay_aware
+        delay_aware=delay_aware
     )
     env_test = make_env(
         args.env,
         args.num_agents,
         device,
-        delay_aware
+        delay_aware=delay_aware
     )
 
     # set training params
@@ -47,7 +47,7 @@ def train(args):
             'loss_pred_next_ratio_coef': 1.,
             'loss_unsafe_coef': 1.,
             'loss_safe_coef': 1.,
-            'loss_h_dot_coef': .9
+            'loss_h_dot_coef': .8
         }
         print('> Using custom hyper-parameters')
     else:
@@ -73,8 +73,8 @@ def train(args):
         env.edge_dim, 
         env.state_dim, 
         env.action_dim, 
-        device, 
-        hyper_params
+        device,
+        hyperparams=hyper_params
     )
 
     # set up trainer
