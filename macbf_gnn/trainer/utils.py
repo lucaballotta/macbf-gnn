@@ -201,7 +201,10 @@ def eval_ctrl_epi(
                     message += f', safe: {safe}'
                 print(message)
             break
-    return epi_reward, epi_length, tuple(video), {'safe': safe}
+    
+    error = env.reach_error().item()
+
+    return epi_reward, epi_length, error, tuple(video), {'safe': safe}
 
 
 def plot_cbf_contour(

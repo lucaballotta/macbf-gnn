@@ -86,10 +86,10 @@ class SimpleCar(MultiAgentEnv):
             'area_size': 3.0,
             'car_radius': 0.05,  # radius of the car
             'dist2goal': 0.02,  # goal reaching threshold
-            'comm_radius': 1.0,  # communication radius
+            'comm_radius': 1.,  # communication radius
             'buffer_size': 5,  # max number of transmissions (tx delays) stored by cars
             'max_age': 5,  # max age of data stored by cars (older are discarded)
-            'poisson_coeff': .5
+            'poisson_coeff': .8
         }
         
         
@@ -166,7 +166,7 @@ class SimpleCar(MultiAgentEnv):
         self.transmit_data(neigh_sizes)
         
         # simulate data reception at cars
-        self.receive_data(data)
+        self.receive_data()
         
         if self.delay_aware:
 
@@ -207,17 +207,24 @@ class SimpleCar(MultiAgentEnv):
         )
         neigh_sizes = self.add_communication_links(data)
         
-        # update age of received data
-        [car.update_ages() for car in self._cars]
+        if self.delay_aware:
+
+            # update age of received data
+            [car.update_ages() for car in self._cars]
         
         # simulate transmission of delayed data among cars
         self.transmit_data(neigh_sizes)
         
         # simulate data reception at cars
-        self.receive_data(data)
+        if not self.delay_aware:
+            [car.reset_neighbor_data() for car in self._cars]
+
+        self.receive_data()
         
-        # remove neighbors with age older than maximum allowed
-        [car.remove_old_data() for car in self._cars]
+        if self.delay_aware:
+            
+            # remove neighbors with age older than maximum allowed
+            [car.remove_old_data() for car in self._cars]
         
         # store current edge attributes with received delayed data
         self._data = self.add_edge_attributes(data)
@@ -234,6 +241,10 @@ class SimpleCar(MultiAgentEnv):
         safe = self.unsafe_mask(data).sum() == 0
 
         return self.data, float(reward), done, {'safe': safe}
+
+
+    def reach_error(self):
+        return torch.mean(torch.norm(self.data.states[:, :2] - self._goal, dim=1))
     
     
     def transmit_data(self, neigh_sizes):        
@@ -243,13 +254,9 @@ class SimpleCar(MultiAgentEnv):
             car.store_delay(delay_tx)
             
 
-    def receive_data(self, data):
-        data.available_states = -torch.ones(self.num_agents, self.state_dim)
+    def receive_data(self):
         for idx_car, car in enumerate(self._cars):
             neighbors_list, delay_list = car.data_delivered()
-            if delay_list:
-                data.available_states[idx_car] = self._states[-min(delay_list) - 1][idx_car]
-            
             for idx_neighbors, neighbors in enumerate(neighbors_list):
                 delay_rec = delay_list[idx_neighbors]
                 for neighbor in neighbors:
@@ -283,17 +290,21 @@ class SimpleCar(MultiAgentEnv):
             edge_index=data.edge_index
         )
         data_next.state_diff = data_next.states[data_next.edge_index[0]] - data_next.states[data_next.edge_index[1]]
-        
-        # increase age of all data
-        if isinstance(data.edge_attr, PackedSequence):
-            edge_attr_tmp = data.edge_attr
+        if self.delay_aware:
+
+            # increase age of all data
+            if isinstance(data.edge_attr, PackedSequence):
+                edge_attr_tmp = data.edge_attr
+            else:
+                edge_attr_tmp = pack_sequence(data.edge_attr, enforce_sorted=False)
+                
+            age_step = torch.zeros_like(edge_attr_tmp.data)
+            age_step[:,-1] = 1.
+            edge_attr = edge_attr_tmp._replace(data=edge_attr_tmp.data + age_step)
+            data_next.edge_attr = edge_attr
+
         else:
-            edge_attr_tmp = pack_sequence(data.edge_attr, enforce_sorted=False)
-            
-        age_step = torch.zeros_like(edge_attr_tmp.data)
-        age_step[:,-1] = 1.
-        edge_attr = edge_attr_tmp._replace(data=edge_attr_tmp.data + age_step)
-        data_next.edge_attr = edge_attr
+            data_next.edge_attr = data_next.state_diff
         
         return data_next
     
@@ -371,9 +382,16 @@ class SimpleCar(MultiAgentEnv):
                 edge_attr.append(car.neighbor_data[neighbor])
                 
         data.edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device)
-        data.edge_attr = edge_attr
+        if self.delay_aware:
+            data.edge_attr = edge_attr
+        else:
+            if edge_attr:
+                data.edge_attr = torch.stack(edge_attr)
+            else:
+                data.edge_attr = torch.tensor([])
+
         data.state_diff = data.states[data.edge_index[0]] - data.states[data.edge_index[1]]
-        
+
         return data
     
     

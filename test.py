@@ -29,7 +29,7 @@ def test(args):
     for n in args.num_agents: 
         
         # make environment
-        delay_aware = True
+        delay_aware = False
         env = make_env(
             settings['env'] if args.env is None else args.env,
             settings['num_agents'] if n is None else n,
@@ -97,7 +97,7 @@ def test(args):
                     not args.no_edge
                 )
             )
-        rewards, lengths, video, info = zip(*results)
+        rewards, lengths, errors, video, info = zip(*results)
         video = sum(video, ())
 
         # calculate safe rate
@@ -135,7 +135,8 @@ def test(args):
         print(verbose)
         with open(os.path.join(args.path, 'test_log.csv'), "a") as f:
             delay_coef = env.params['poisson_coeff']
-            f.write(f'{env.num_agents},{safe_rate},{np.mean(lengths)},{args.epi},{delay_coef},{args.seed}\n')
+            comm_radius = env.params['comm_radius']
+            f.write(f'{env.num_agents},{safe_rate},{np.mean(lengths)},{round(np.mean(errors), 3)},{args.epi},{delay_coef},{comm_radius},{args.seed}\n')
         print(f'> Done in {time.time() - start_time:.0f}s')
 
 

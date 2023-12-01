@@ -220,6 +220,10 @@ class SimpleDrone(MultiAgentEnv):
 
         return self.data, float(reward), done, {'safe': safe}
     
+
+    def reach_error(self):
+        return torch.mean(torch.norm(self.data.states - self._goal, dim=1))
+    
     
     def transmit_data(self, neigh_sizes):        
         for drone_idx, drone in enumerate(self._drones):

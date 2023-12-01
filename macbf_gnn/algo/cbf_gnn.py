@@ -83,6 +83,8 @@ class MACBFGNN(Algorithm):
         self.predictor = Predictor(
             input_dim=self.action_dim + self.edge_dim + 1,
             output_dim=self.edge_dim,
+            hidden_size=256,
+            dropout=0.1,
             device=self.device
         ).to(device)
         self.cbf = CBFGNN(
@@ -127,8 +129,8 @@ class MACBFGNN(Algorithm):
 
     @torch.no_grad()
     def act(self, data: Data) -> Tensor:
-        if data.edge_attr:
-            if self._env.delay_aware:
+        if self._env.delay_aware:
+            if data.edge_attr:
                 input_data = Data(
                     x=data.x,
                     edge_index=data.edge_index,
@@ -140,10 +142,11 @@ class MACBFGNN(Algorithm):
                 # h = self.cbf(input_data)
                 # print('state', data.state_diff)
                 # print('edge attr', data.edge_attr)
-                # print('pred state', data_pred.edge_attr)
+                # print('edge attr', data.edge_attr)
+                # print('pred state', input_data.edge_attr)
                 # true_state_diff = data.state_diff
                 # true_state_diff_norm = torch.norm(true_state_diff, dim=1)
-                # pred_err_norm = torch.norm(data_pred.edge_attr - true_state_diff, dim=1)
+                # pred_err_norm = torch.norm(input_data.edge_attr - true_state_diff, dim=1)
                 # print('loss pred', torch.mean(pred_err_norm / true_state_diff_norm).item())
                 # print('cbf', h)
                 # action = self.controller(input_data)
@@ -157,7 +160,7 @@ class MACBFGNN(Algorithm):
                 # print('next cbf', h_next)
                 # action = self.actor(input_data)
                 # print('action', action)
-                # print('action norm', torch.square(action).sum(dim=1))
+                # print('action norm', torch.mean(torch.square(action).sum(dim=1)))
                 # h_dot = (h_next - h) / self._env.dt
                 # max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + self.params['eps'])
                 # print('loss_h_dot', torch.mean(max_val_h_dot).item())
@@ -166,12 +169,13 @@ class MACBFGNN(Algorithm):
                 return self.controller(input_data)
             
             else:
-                data.edge_attr = torch.stack(data.edge_attr)
-                return self.controller(data)
+                return torch.zeros(self.num_agents, self.action_dim, device=self.device)
             
         else:
-            return torch.zeros(self.num_agents, self.action_dim, device=self.device)
-    
+            if data.edge_attr.numel():
+                return self.controller(data)
+            else:
+                return torch.zeros(self.num_agents, self.action_dim, device=self.device)
 
     @torch.no_grad()
     def step(self, data: Data, prob: float) -> Tensor:
@@ -206,28 +210,40 @@ class MACBFGNN(Algorithm):
                 prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10, True)
                 graph_list = curr_graphs + prev_graphs
             
-            graph_list = [graph for graph in graph_list if graph.edge_attr] # discard graphs with no data
+            # discard graphs with no data
+            if self._env.delay_aware:
+                graph_list = [graph for graph in graph_list if graph.edge_attr]
+            else:
+                graph_list = [graph for graph in graph_list if graph.edge_attr.numel()] 
+            
+            # update models
             if graph_list:
-                batched_edge_attr = self.batch_edge_attr(graph_list)
-                batched_edge_attr.requires_grad = True
-                graphs = Batch.from_data_list(graph_list, exclude_keys=['edge_attr'])
-                graphs.edge_attr = batched_edge_attr
+                if self._env.delay_aware:
+                    graphs = Batch.from_data_list(graph_list, exclude_keys=['edge_attr'])
+                    batched_edge_attr = self.batch_edge_attr(graph_list)
+                    batched_edge_attr.requires_grad = True
+                    graphs.edge_attr = batched_edge_attr
                 
-                # get current state difference predictions
-                pred_state_diff = self.predictor(batched_edge_attr)
-                true_state_diff = graphs.state_diff
-                true_state_diff_norm = torch.norm(true_state_diff, dim=1)
-                pred_err_norm = torch.norm(pred_state_diff - true_state_diff, dim=1)
-                loss_pred = torch.mean(pred_err_norm / true_state_diff_norm)
-                
-                # get CBF values and the control inputs
-                input_data = Data(
-                    x=graphs.x,
-                    edge_index=graphs.edge_index,
-                    edge_attr=pred_state_diff,
-                    u_ref = graphs.u_ref
-                )
-                h = self.cbf(input_data)
+                    # get current state difference predictions
+                    pred_state_diff = self.predictor(batched_edge_attr)
+                    true_state_diff = graphs.state_diff
+                    true_state_diff_norm = torch.norm(true_state_diff, dim=1)
+                    pred_err_norm = torch.norm(pred_state_diff - true_state_diff, dim=1)
+                    loss_pred = torch.mean(pred_err_norm / true_state_diff_norm)
+                    
+                    # get CBF values and the control inputs
+                    input_data = Data(
+                        x=graphs.x,
+                        edge_index=graphs.edge_index,
+                        edge_attr=pred_state_diff,
+                        u_ref = graphs.u_ref
+                    )
+                    h = self.cbf(input_data)
+
+                else:
+                    graphs = Batch.from_data_list(graph_list)
+                    graphs.edge_attr.requires_grad = True
+                    h = self.cbf(graphs)
 
                 # calculate loss
                 # unsafe region h(x) < 0
@@ -255,27 +271,36 @@ class MACBFGNN(Algorithm):
                     acc_safe = torch.tensor(1.0).type_as(h_safe)
                     
                 # derivative loss h_dot + \alpha h > 0
-                actions = self.controller(input_data)
-                graphs_next = self._env.forward_graph(graphs, actions)
-                graphs_next.edge_attr.requires_grad = True
-                true_state_diff_next = graphs_next.state_diff
+                if self._env.delay_aware:
+                    actions = self.controller(input_data)
+                else:
+                    actions = self.controller(graphs)
 
-                cbf_input_data_next = Data(
-                    x=graphs_next.x,
-                    edge_index=graphs_next.edge_index,
-                    edge_attr=true_state_diff_next
-                )
-                h_next = self.cbf(cbf_input_data_next)
+                graphs_next = self._env.forward_graph(graphs, actions)
+                
+                if self._env.delay_aware:
+                    graphs_next.edge_attr.requires_grad = True
+                    true_state_diff_next = graphs_next.state_diff
+                    cbf_input_data_next = Data(
+                        x=graphs_next.x,
+                        edge_index=graphs_next.edge_index,
+                        edge_attr=true_state_diff_next
+                    )
+                    h_next = self.cbf(cbf_input_data_next)
+
+                    # update prediction loss
+                    pred_state_diff_next = self.predictor(graphs_next.edge_attr)
+                    true_state_diff_next_norm = torch.norm(true_state_diff_next, dim=1)
+                    pred_err_next_norm = torch.norm(pred_state_diff_next - true_state_diff_next, dim=1)
+                    loss_pred += self.params['loss_pred_next_ratio_coef'] * torch.mean(pred_err_next_norm / true_state_diff_next_norm)
+
+                else:
+                    h_next = self.cbf(graphs_next)
+                
                 h_dot = (h_next - h) / self._env.dt
                 max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + self.params['eps'])
                 loss_h_dot = torch.mean(max_val_h_dot)
                 acc_h_dot = torch.mean(torch.greater_equal((h_dot + self.params['alpha'] * h), 0).type_as(h_dot))
-                
-                # update prediction loss
-                pred_state_diff_next = self.predictor(graphs_next.edge_attr)
-                true_state_diff_next_norm = torch.norm(true_state_diff_next, dim=1)
-                pred_err_next_norm = torch.norm(pred_state_diff_next - true_state_diff_next, dim=1)
-                loss_pred += self.params['loss_pred_next_ratio_coef'] * torch.mean(pred_err_next_norm / true_state_diff_next_norm)
                 
                 # action loss
                 loss_action = torch.mean(torch.square(actions).sum(dim=1))
@@ -285,9 +310,9 @@ class MACBFGNN(Algorithm):
                         self.params['loss_safe_coef'] * loss_safe + \
                         self.params['loss_h_dot_coef'] * loss_h_dot + \
                         self.params['loss_action_coef'] * loss_action
-
+                
                 # backpropagation
-                if not train_ctrl:
+                if not(train_ctrl) and self._env.delay_aware:
 
                     # update predictor
                     self.optim_predictor.zero_grad(set_to_none=True)
@@ -311,7 +336,8 @@ class MACBFGNN(Algorithm):
                 writer.add_scalar('loss/safe', loss_safe.item(), step * self.params['inner_iter'] + i_inner)
                 writer.add_scalar('loss/derivative', loss_h_dot.item(), step * self.params['inner_iter'] + i_inner)
                 writer.add_scalar('loss/action', loss_action.item(), step * self.params['inner_iter'] + i_inner)
-                writer.add_scalar('loss/prediction', loss_pred.item(), step * self.params['inner_iter'] + i_inner)
+                if self._env.delay_aware:
+                    writer.add_scalar('loss/prediction', loss_pred.item(), step * self.params['inner_iter'] + i_inner)
 
                 # save accuracy
                 writer.add_scalar('acc/unsafe', acc_unsafe.item(), step * self.params['inner_iter'] + i_inner)
@@ -322,10 +348,7 @@ class MACBFGNN(Algorithm):
         self.memory.merge(self.buffer)
         self.buffer.clear()
 
-        return {
-            'h safe/avg': torch.mean(h_safe).item(),
-            'h unsafe/avg': torch.mean(h_unsafe).item(),
-            'loss/prediction': loss_pred.item(),
+        train_info = {
             'loss/safe': loss_safe.item(),
             'loss/unsafe': loss_unsafe.item(),
             'loss/derivative': loss_h_dot.item(),
@@ -333,17 +356,44 @@ class MACBFGNN(Algorithm):
             'acc/unsafe': acc_unsafe.item(),
             'acc/derivative': acc_h_dot.item(),
         }
+        if self._env.delay_aware:
+            train_info['loss/prediction'] = loss_pred.item()
+
+        return train_info
         
         
     def batch_edge_attr(self, graph_list):
-        edge_attrs = []
+        edge_attr = []
         for graph in graph_list:
-            edge_attrs.extend(graph.edge_attr)
+            edge_attr.extend(graph.edge_attr)
         
-        batched_edge_attr = pack_sequence(edge_attrs, enforce_sorted=False)
-        
+        batched_edge_attr = pack_sequence(edge_attr, enforce_sorted=False)
+
         return batched_edge_attr
-                
+
+    
+    def preprocess_edge_attr(self, edge_attr):
+        no_delay_attr_idx = []
+        no_delay_attr = []
+        for edge_idx, edge in enumerate(edge_attr):
+            if edge[-1][-1] == 0:
+                no_delay_attr_idx.append(edge_idx)
+                no_delay_attr.append(deepcopy(edge[-1][self._env.action_dim:-1]))
+
+        delay_attr = [deepcopy(edge) for edge_idx, edge in enumerate(edge_attr) if edge_idx not in no_delay_attr_idx]
+        if delay_attr:
+            pred_attr = self.predictor(delay_attr)
+            out_attr = torch.zeros([len(no_delay_attr) + len(delay_attr), self._env.edge_dim], device=self.device)
+            out_attr[no_delay_attr_idx, :] = torch.stack(no_delay_attr)
+            mask = torch.ones(len(no_delay_attr) + len(delay_attr), device=self.device)
+            mask[no_delay_attr_idx] = 0
+            out_attr[mask.bool(), :] = pred_attr
+
+        else:
+            out_attr = torch.stack(no_delay_attr)
+
+        return out_attr
+    
                 
     def save(self, save_dir: str):
         if not os.path.exists(save_dir):

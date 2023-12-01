@@ -212,6 +212,13 @@ class MultiAgentEnv(ABC):
         pass
 
     @abstractmethod
+    def reach_error(self) -> Tensor:
+        """
+        Returns error of current states with respect to the task 
+        """
+        pass
+
+    @abstractmethod
     def forward_graph(self, data: Data, action: Tensor) -> Data:
         """
         Get the graph of the next timestep after doing the action.
@@ -467,6 +474,9 @@ class Agent(ABC):
         self._delays.clear()
         self._neighbor_data.clear()
         self._past_states.clear()
+
+    def reset_neighbor_data(self):
+        self._neighbor_data.clear()
         
     
     def store_data(self, neighbor: int, data: Tensor, delay: int, delay_aware: bool) -> Tuple[bool, int]:

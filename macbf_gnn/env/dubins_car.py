@@ -18,9 +18,6 @@ from .base import Agent, MultiAgentEnv
 
 
 class DubinsCar(MultiAgentEnv):
-    """
-    State: [x, y, theta, v_x, v_y]
-    """
 
     def __init__(self, num_agents: int, device: torch.device, dt: float = 0.03, params: dict = None, delay_aware: bool = True):
         super(DubinsCar, self).__init__(num_agents, device, dt, params, delay_aware)
@@ -210,17 +207,24 @@ class DubinsCar(MultiAgentEnv):
         )
         neigh_sizes = self.add_communication_links(data)
 
-        # update age of received data
-        [car.update_ages() for car in self._cars]
+        if self.delay_aware:
+
+            # update age of received data
+            [car.update_ages() for car in self._cars]
         
         # simulate transmission of delayed data among cars
         self.transmit_data(neigh_sizes)
         
         # simulate data reception at cars
+        if not self.delay_aware:
+            [car.reset_neighbor_data() for car in self._cars]
+
         self.receive_data(data)
         
-        # remove neighbors with age older than maximum allowed
-        [car.remove_old_data() for car in self._cars]
+        if self.delay_aware:
+
+            # remove neighbors with age older than maximum allowed
+            [car.remove_old_data() for car in self._cars]
         
         # store current edge attributes with received delayed data
         self._data = self.add_edge_attributes(data)
@@ -234,10 +238,14 @@ class DubinsCar(MultiAgentEnv):
         reward = - (self.collision_mask(data).sum() * 100 / self.num_agents) - 1.0 + reach * 1000.
 
         # assess safety
-        safe = float(self.collision_mask(data).sum() == 0)
+        safe = self.collision_mask(data).sum() == 0
         
         return self.data, float(reward), done, {'safe': safe}
+    
 
+    def reach_error(self):
+        return torch.mean(torch.norm(self.data.states[:, :2] - self._goal[:, :2], dim=1))
+    
 
     def transmit_data(self, neigh_sizes):        
         for car_idx, car in enumerate(self._cars):
@@ -290,22 +298,26 @@ class DubinsCar(MultiAgentEnv):
             states=state,
             edge_index=data.edge_index
         )
-        state_aug = torch.cat([state[:, :3],
-                               (state[:, 3] * torch.cos(state[:, 2])).unsqueeze(1),
-                               (state[:, 3] * torch.sin(state[:, 2])).unsqueeze(1)], dim=1
+        state_aug = torch.cat([data_next.states[:, :3],
+                               (data_next.states[:, 3] * torch.cos(data_next.states[:, 2])).unsqueeze(1),
+                               (data_next.states[:, 3] * torch.sin(data_next.states[:, 2])).unsqueeze(1)], dim=1
                             ).to(self.device)
         data_next.state_diff = state_aug[data_next.edge_index[0]] - state_aug[data_next.edge_index[1]]
+        if self.delay_aware:
 
-        # increase age of all data
-        if isinstance(data.edge_attr, PackedSequence):
-            edge_attr_tmp = data.edge_attr
+            # increase age of all data
+            if isinstance(data.edge_attr, PackedSequence):
+                edge_attr_tmp = data.edge_attr
+            else:
+                edge_attr_tmp = pack_sequence(data.edge_attr, enforce_sorted=False)
+                
+            age_step = torch.zeros_like(edge_attr_tmp.data)
+            age_step[:,-1] = 1.
+            edge_attr = edge_attr_tmp._replace(data=edge_attr_tmp.data + age_step)
+            data_next.edge_attr = edge_attr
+
         else:
-            edge_attr_tmp = pack_sequence(data.edge_attr, enforce_sorted=False)
-            
-        age_step = torch.zeros_like(edge_attr_tmp.data)
-        age_step[:,-1] = 1.
-        edge_attr = edge_attr_tmp._replace(data=edge_attr_tmp.data + age_step)
-        data_next.edge_attr = edge_attr
+            data_next.edge_attr = data_next.state_diff
 
         return data_next
 
@@ -388,7 +400,14 @@ class DubinsCar(MultiAgentEnv):
                 edge_attr.append(car.neighbor_data[neighbor])
                 
         data.edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device)
-        data.edge_attr = edge_attr
+        if self.delay_aware:
+            data.edge_attr = edge_attr
+        else:
+            if edge_attr:
+                data.edge_attr = torch.stack(edge_attr)
+            else:
+                data.edge_attr = torch.tensor([])
+                
         state_aug = torch.cat([data.states[:, :3],
                                (data.states[:, 3] * torch.cos(data.states[:, 2])).unsqueeze(1),
                                (data.states[:, 3] * torch.sin(data.states[:, 2])).unsqueeze(1)], dim=1

@@ -7,12 +7,20 @@ from macbf_gnn.nn import MLP
     
 class Predictor(nn.Module):
         
-    def __init__(self, input_dim: int, output_dim: int, num_layers: int = 4, hidden_size: int = 256, device: torch.device = torch.device('cuda')):
+    def __init__(
+            self, 
+            input_dim: int,
+            output_dim: int,
+            num_layers: int = 4,
+            hidden_size: int = 256,
+            dropout: float = 0.,
+            device: torch.device = torch.device('cuda')
+        ):
         super(Predictor, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.lstm = nn.LSTM(
-            input_dim, hidden_size, num_layers, batch_first=True
+            input_dim, hidden_size, num_layers, batch_first=True, dropout=dropout
         )
         self.mlp = MLP(
             in_channels=hidden_size, out_channels=output_dim, hidden_layers=(32, 32), limit_lip=True
