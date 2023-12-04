@@ -57,7 +57,7 @@ class Trainer:
         # reset the environment
         data = self.env.reset()
         train_ctrl = False
-        train_counter_max = 20
+        train_counter_max = 10
         train_counter = train_counter_max
         verbose = None
         for step in tqdm(range(1, steps + 1), ncols=80):
@@ -76,8 +76,8 @@ class Trainer:
                 if train_counter == 0:
                     train_counter = train_counter_max
                     train_ctrl = not train_ctrl
-                    if train_ctrl:
-                        train_counter = train_counter // 2
+                    # if train_ctrl:
+                    #     train_counter = train_counter // 2
 
             # evaluate the algorithm
             if step % eval_interval == 0:

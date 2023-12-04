@@ -19,7 +19,8 @@ def make_algo(
         action_dim: int,
         device: torch.device,
         batch_size: int = 512,
-        hyperparams: Optional[dict] = None
+        hyperparams: Optional[dict] = None,
+        use_all_data: Optional[bool] = True
 ) -> Algorithm:
     if algo == 'nominal':
         return Nominal(
@@ -31,7 +32,7 @@ def make_algo(
         )
     if algo == 'macbfgnn':
         return MACBFGNN(
-            env, num_agents, node_dim, edge_dim, state_dim, action_dim, device, batch_size, hyperparams
+            env, num_agents, node_dim, edge_dim, state_dim, action_dim, device, batch_size, hyperparams, use_all_data
         )
     else:
         raise NotImplementedError('Unknown Algorithm!')

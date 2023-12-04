@@ -5,7 +5,7 @@ from torch.nn.utils.rnn import pad_packed_sequence, pack_sequence, PackedSequenc
 from macbf_gnn.nn import MLP
 
     
-class Predictor(nn.Module):
+class PredictorLSTM(nn.Module):
         
     def __init__(
             self, 
@@ -16,14 +16,21 @@ class Predictor(nn.Module):
             dropout: float = 0.,
             device: torch.device = torch.device('cuda')
         ):
-        super(Predictor, self).__init__()
+        super(PredictorLSTM, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.lstm = nn.LSTM(
-            input_dim, hidden_size, num_layers, batch_first=True, dropout=dropout
+            input_dim, 
+            hidden_size,
+            num_layers, 
+            batch_first=True, 
+            dropout=dropout
         )
         self.mlp = MLP(
-            in_channels=hidden_size, out_channels=output_dim, hidden_layers=(32, 32), limit_lip=True
+            in_channels=hidden_size, 
+            out_channels=output_dim, 
+            hidden_layers=(32, 32), 
+            limit_lip=True
         )
         self.device = device
 
@@ -43,3 +50,22 @@ class Predictor(nn.Module):
         pred = self.mlp(out_nnz)
         
         return pred
+
+class PredictorMLP(nn.Module):
+    
+    def __init__(
+            self, 
+            input_dim: int,
+            output_dim: int,
+            hidden_layers: tuple,
+        ):
+        super(PredictorMLP, self).__init__()
+        self.mlp = MLP(
+            in_channels=input_dim,
+            out_channels=output_dim,
+            hidden_layers=hidden_layers,
+            limit_lip=True
+        )
+
+    def forward(self, edge_attr):
+        return self.mlp(edge_attr)

@@ -12,7 +12,8 @@ from torch.optim import Adam
 from torch.nn.utils.rnn import pack_sequence
 from typing import Optional
 
-from macbf_gnn.nn import MLP, CBFGNNLayer, Predictor
+from macbf_gnn.nn import MLP, CBFGNNLayer
+from macbf_gnn.nn.predictor import PredictorMLP, PredictorLSTM
 from macbf_gnn.controller import ControllerGNN
 from macbf_gnn.env import MultiAgentEnv
 
@@ -67,7 +68,8 @@ class MACBFGNN(Algorithm):
             action_dim: int,
             device: torch.device,
             batch_size: int = 500,
-            params: Optional[dict] = None
+            params: Optional[dict] = None,
+            use_all_data: bool = True
     ):
         super(MACBFGNN, self).__init__(
             env=env,
@@ -80,13 +82,23 @@ class MACBFGNN(Algorithm):
         )
 
         # models
-        self.predictor = Predictor(
-            input_dim=self.action_dim + self.edge_dim + 1,
-            output_dim=self.edge_dim,
-            hidden_size=256,
-            dropout=0.1,
-            device=self.device
-        ).to(device)
+        self.use_all_data = use_all_data
+        if self.use_all_data:
+            self.predictor = PredictorLSTM(
+                input_dim=self.action_dim + self.edge_dim + 1,
+                output_dim=self.edge_dim,
+                hidden_size=256,
+                dropout=0.1,
+                device=self.device
+            ).to(device)
+        
+        else:
+            self.predictor = PredictorMLP(
+                input_dim=self.action_dim + self.edge_dim + 1,
+                output_dim=self.edge_dim,
+                hidden_layers=(128, 128)
+            ).to(device)
+        
         self.cbf = CBFGNN(
             num_agents=self.num_agents,
             node_dim=self.node_dim,
@@ -130,63 +142,63 @@ class MACBFGNN(Algorithm):
     @torch.no_grad()
     def act(self, data: Data) -> Tensor:
         if self._env.delay_aware:
-            if data.edge_attr:
-                input_data = Data(
-                    x=data.x,
-                    edge_index=data.edge_index,
-                    edge_attr=self.predictor(data.edge_attr),
-                    u_ref=data.u_ref
-                )
-                # print('')
-                # print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
-                # h = self.cbf(input_data)
-                # print('state', data.state_diff)
-                # print('edge attr', data.edge_attr)
-                # print('edge attr', data.edge_attr)
-                # print('pred state', input_data.edge_attr)
-                # true_state_diff = data.state_diff
-                # true_state_diff_norm = torch.norm(true_state_diff, dim=1)
-                # pred_err_norm = torch.norm(input_data.edge_attr - true_state_diff, dim=1)
-                # print('loss pred', torch.mean(pred_err_norm / true_state_diff_norm).item())
-                # print('cbf', h)
-                # action = self.controller(input_data)
-                # data_next = self._env.forward_graph(data, action)
-                # input_cbf_next = Data(
-                #     x=data_next.x,
-                #     edge_index=data_next.edge_index,
-                #     edge_attr=data_next.state_diff
-                # )
-                # h_next = self.cbf(input_cbf_next)
-                # print('next cbf', h_next)
-                # action = self.actor(input_data)
-                # print('action', action)
-                # print('action norm', torch.mean(torch.square(action).sum(dim=1)))
-                # h_dot = (h_next - h) / self._env.dt
-                # max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + self.params['eps'])
-                # print('loss_h_dot', torch.mean(max_val_h_dot).item())
-                # print('actual safe', not torch.any(self._env.unsafe_mask(data)))
-                # print('CBF-safe', torch.all(h>0).item())
-                return self.controller(input_data)
-            
-            else:
-                return torch.zeros(self.num_agents, self.action_dim, device=self.device)
-            
+            input_data = Data(
+                x=data.x,
+                edge_index=data.edge_index,
+                edge_attr=self.predictor(data.edge_attr),
+                u_ref=data.u_ref
+            )
+            # h = self.cbf(input_data)
+            # print('state', data.state_diff)
+            # print('edge attr', data.edge_attr)
+            # print('edge attr', data.edge_attr)
+            # print('pred state', input_data.edge_attr)
+            # true_state_diff = data.state_diff
+            # true_state_diff_norm = torch.norm(true_state_diff, dim=1)
+            # pred_err_norm = torch.norm(input_data.edge_attr - true_state_diff, dim=1)
+            # print('loss pred', torch.mean(pred_err_norm / true_state_diff_norm).item())
+            # print('cbf', h)
+            # action = self.controller(input_data)
+            # data_next = self._env.forward_graph(data, action)
+            # input_cbf_next = Data(
+            #     x=data_next.x,
+            #     edge_index=data_next.edge_index,
+            #     edge_attr=data_next.state_diff
+            # )
+            # h_next = self.cbf(input_cbf_next)
+            # print('next cbf', h_next)
+            # action = self.actor(input_data)
+            # print('action', action)
+            # print('action norm', torch.mean(torch.square(action).sum(dim=1)))
+            # h_dot = (h_next - h) / self._env.dt
+            # max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + self.params['eps'])
+            # print('loss_h_dot', torch.mean(max_val_h_dot).item())
+            # print('actual safe', not torch.any(self._env.unsafe_mask(data)))
+            # print('CBF-safe', torch.all(h>0).item())
+            return self.controller(input_data)
+        
         else:
-            if data.edge_attr.numel():
-                return self.controller(data)
-            else:
-                return torch.zeros(self.num_agents, self.action_dim, device=self.device)
+            return self.controller(data)
 
     @torch.no_grad()
     def step(self, data: Data, prob: float) -> Tensor:
-        is_safe = True
-        if torch.any(self._env.unsafe_mask(data)):
-            is_safe = not is_safe
+        if data.edge_index.numel():
+            is_safe = True
+            if torch.any(self._env.unsafe_mask(data)):
+                is_safe = not is_safe
             
-        self.buffer.append(deepcopy(data), is_safe)
-        action = self.act(data)
-        if np.random.rand() < prob:
-            action = torch.zeros_like(action, device=self.device)
+            if self._env.delay_aware and not self.use_all_data:
+                data.edge_attr = torch.stack(
+                    [edge_attr[-1, :] for edge_attr in data.edge_attr]
+                )
+            
+            self.buffer.append(deepcopy(data), is_safe)
+            action = self.act(data)
+            if np.random.rand() < prob:
+                action = torch.zeros_like(action, device=self.device)
+
+        else:
+            action = torch.zeros(self.num_agents, self.action_dim, device=self.device)
         
         return action
 
@@ -210,22 +222,20 @@ class MACBFGNN(Algorithm):
                 prev_graphs = self.memory.sample(self.batch_size // 5 - self.batch_size // 10, True)
                 graph_list = curr_graphs + prev_graphs
             
-            # discard graphs with no data
-            if self._env.delay_aware:
-                graph_list = [graph for graph in graph_list if graph.edge_attr]
-            else:
-                graph_list = [graph for graph in graph_list if graph.edge_attr.numel()] 
-            
             # update models
             if graph_list:
                 if self._env.delay_aware:
-                    graphs = Batch.from_data_list(graph_list, exclude_keys=['edge_attr'])
-                    batched_edge_attr = self.batch_edge_attr(graph_list)
-                    batched_edge_attr.requires_grad = True
-                    graphs.edge_attr = batched_edge_attr
-                
+                    if self.use_all_data:
+                        graphs = Batch.from_data_list(graph_list, exclude_keys=['edge_attr'])
+                        batched_edge_attr = self.batch_edge_attr(graph_list)
+                        batched_edge_attr.requires_grad = True
+                        graphs.edge_attr = batched_edge_attr
+
+                    else:
+                        graphs = Batch.from_data_list(graph_list)
+                    
                     # get current state difference predictions
-                    pred_state_diff = self.predictor(batched_edge_attr)
+                    pred_state_diff = self.predictor(graphs.edge_attr)
                     true_state_diff = graphs.state_diff
                     true_state_diff_norm = torch.norm(true_state_diff, dim=1)
                     pred_err_norm = torch.norm(pred_state_diff - true_state_diff, dim=1)
@@ -276,7 +286,7 @@ class MACBFGNN(Algorithm):
                 else:
                     actions = self.controller(graphs)
 
-                graphs_next = self._env.forward_graph(graphs, actions)
+                graphs_next = self._env.forward_graph(graphs, actions, self.use_all_data)
                 
                 if self._env.delay_aware:
                     graphs_next.edge_attr.requires_grad = True
@@ -366,9 +376,9 @@ class MACBFGNN(Algorithm):
         edge_attr = []
         for graph in graph_list:
             edge_attr.extend(graph.edge_attr)
-        
-        batched_edge_attr = pack_sequence(edge_attr, enforce_sorted=False)
 
+        batched_edge_attr = pack_sequence(edge_attr, enforce_sorted=False)
+        
         return batched_edge_attr
 
     
@@ -421,7 +431,7 @@ class MACBFGNN(Algorithm):
             h = self.cbf(input_data).detach()
             action = self.controller(input_data).detach()
             nominal = torch.zeros_like(action, device=self.device)
-            data_next = self._env.forward_graph(data, nominal)
+            data_next = self._env.forward_graph(data, nominal, self.use_all_data)
             data_next_pred = Data(
                         x=data_next.x,
                         edge_index=data_next.edge_index,

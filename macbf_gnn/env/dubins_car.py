@@ -283,7 +283,7 @@ class DubinsCar(MultiAgentEnv):
                         idx_car, stored_data, delay_rec, self.delay_aware)
                     
     
-    def forward_graph(self, data: Data, action: Tensor) -> Data:
+    def forward_graph(self, data: Data, action: Tensor, use_all_data: bool = True) -> Data:
         
         # calculate next state using dynamics
         action = action + self.u_ref(data)
@@ -304,16 +304,23 @@ class DubinsCar(MultiAgentEnv):
                             ).to(self.device)
         data_next.state_diff = state_aug[data_next.edge_index[0]] - state_aug[data_next.edge_index[1]]
         if self.delay_aware:
+            if use_all_data:
 
-            # increase age of all data
-            if isinstance(data.edge_attr, PackedSequence):
-                edge_attr_tmp = data.edge_attr
+                # increase age of all data
+                if isinstance(data.edge_attr, PackedSequence):
+                    edge_attr_tmp = data.edge_attr
+                else:
+                    edge_attr_tmp = pack_sequence(data.edge_attr, enforce_sorted=False)
+                    
+                age_step = torch.zeros_like(edge_attr_tmp.data)
+                age_step[:,-1] = 1.
+                edge_attr = edge_attr_tmp._replace(data=edge_attr_tmp.data + age_step)
+
             else:
-                edge_attr_tmp = pack_sequence(data.edge_attr, enforce_sorted=False)
-                
-            age_step = torch.zeros_like(edge_attr_tmp.data)
-            age_step[:,-1] = 1.
-            edge_attr = edge_attr_tmp._replace(data=edge_attr_tmp.data + age_step)
+                age_step = torch.zeros_like(data.edge_attr)
+                age_step[:,-1] = 1.
+                edge_attr = data.edge_attr + age_step
+
             data_next.edge_attr = edge_attr
 
         else:
