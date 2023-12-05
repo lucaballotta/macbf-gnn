@@ -165,7 +165,7 @@ class Algorithm(ABC):
         pass
 
     @abstractmethod
-    def load(self, load_dir: str):
+    def load(self, load_dir: str, warm_start: bool):
         """
         Load the models from load_dir
 
@@ -173,6 +173,8 @@ class Algorithm(ABC):
         ----------
         load_dir: str,
             folder to load the models
+        warm_start: bool,
+            True if loaded model is used as warm start for training
         """
         pass
 

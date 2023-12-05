@@ -15,9 +15,9 @@ def train(args):
 
     # set up training device
     use_cuda = torch.cuda.is_available() and not args.cpu
-    if use_cuda:
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
-    device = torch.device('cuda:' + os.environ["CUDA_VISIBLE_DEVICES"] if use_cuda else 'cpu')
+    # if use_cuda:
+    #     os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+    device = torch.device('cuda:' + str(args.gpu) if use_cuda else 'cpu')
     print(f'> Training with {device}')
 
     # set up environment
@@ -42,12 +42,12 @@ def train(args):
             'alpha': 1.,
             'eps': 0.02,
             'inner_iter': 10,
-            'loss_action_coef': 0.001,
+            'loss_action_coef': 0.01,
             'loss_pred_coef': 1.,
             'loss_pred_next_ratio_coef': 1.,
             'loss_unsafe_coef': 1.,
             'loss_safe_coef': 1.,
-            'loss_h_dot_coef': .5
+            'loss_h_dot_coef': .7
         }
         print('> Using custom hyper-parameters')
     else:
@@ -79,6 +79,14 @@ def train(args):
         use_all_data=use_all_data
     )
 
+    # warm start
+    if args.path_init is not None:
+        model_path = os.path.join(args.path_init, 'models')
+        controller_name = os.listdir(model_path)
+        controller_name = [i for i in controller_name if 'step' in i]
+        controller_id = sorted([int(i.split('step_')[1].split('.')[0]) for i in controller_name])
+        algo.load(os.path.join(model_path, f'step_{controller_id[-1]}'), warm_start=True)
+
     # set up trainer
     trainer = Trainer(
         env,
@@ -101,6 +109,7 @@ if __name__ == '__main__':
     parser.add_argument('--algo', type=str, default='macbfgnn')
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--path-init', type=str, default=None)
 
     # default
     parser.add_argument('--cpu', action='store_true', default=False)

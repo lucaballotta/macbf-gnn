@@ -148,18 +148,19 @@ class MACBFGNN(Algorithm):
                 edge_attr=self.predictor(data.edge_attr),
                 u_ref=data.u_ref
             )
+            # print('')
+            # print('@@@@@@@@@@@@@@@@@@@')
             # h = self.cbf(input_data)
             # print('state', data.state_diff)
             # print('edge attr', data.edge_attr)
-            # print('edge attr', data.edge_attr)
+            # input()
             # print('pred state', input_data.edge_attr)
-            # true_state_diff = data.state_diff
-            # true_state_diff_norm = torch.norm(true_state_diff, dim=1)
-            # pred_err_norm = torch.norm(input_data.edge_attr - true_state_diff, dim=1)
-            # print('loss pred', torch.mean(pred_err_norm / true_state_diff_norm).item())
+            # true_state_diff_norm = torch.norm(data.state_diff, dim=1)
+            # pred_err_norm = torch.norm(input_data.edge_attr - data.state_diff, dim=1)
+            # print('state error', torch.mean(pred_err_norm / true_state_diff_norm).item())
             # print('cbf', h)
             # action = self.controller(input_data)
-            # data_next = self._env.forward_graph(data, action)
+            # data_next = self._env.forward_graph(data, action, self.use_all_data)
             # input_cbf_next = Data(
             #     x=data_next.x,
             #     edge_index=data_next.edge_index,
@@ -167,7 +168,7 @@ class MACBFGNN(Algorithm):
             # )
             # h_next = self.cbf(input_cbf_next)
             # print('next cbf', h_next)
-            # action = self.actor(input_data)
+            # action = self.controller(input_data)
             # print('action', action)
             # print('action norm', torch.mean(torch.square(action).sum(dim=1)))
             # h_dot = (h_next - h) / self._env.dt
@@ -178,6 +179,16 @@ class MACBFGNN(Algorithm):
             return self.controller(input_data)
         
         else:
+            # print('')
+            # print('@@@@@@@@@@@@@@@@@@@')
+            # action = self.controller(data)
+            # print('action norm', torch.mean(torch.square(action).sum(dim=1)))
+            # print('state', data.state_diff)
+            # print('edge attr', data.edge_attr)
+            # true_state_diff_norm = torch.norm(data.state_diff, dim=1)
+            # pred_err_norm = torch.norm(data.edge_attr - data.state_diff, dim=1)
+            # print('state error', torch.mean(pred_err_norm / true_state_diff_norm).item())
+            # input()
             return self.controller(data)
 
     @torch.no_grad()
@@ -413,12 +424,13 @@ class MACBFGNN(Algorithm):
         torch.save(self.controller.state_dict(), os.path.join(save_dir, 'actor.pkl'))
 
 
-    def load(self, load_dir: str):
+    def load(self, load_dir: str, warm_start: bool = False):
         assert os.path.exists(load_dir)
-        self.predictor.load_state_dict(torch.load(os.path.join(load_dir, 'predictor.pkl'), map_location=self.device))
         self.cbf.load_state_dict(torch.load(os.path.join(load_dir, 'cbf.pkl'), map_location=self.device))
         self.controller.load_state_dict(torch.load(os.path.join(load_dir, 'actor.pkl'), map_location=self.device))
-
+        if not warm_start:
+            self.predictor.load_state_dict(torch.load(os.path.join(load_dir, 'predictor.pkl'), map_location=self.device))
+        
 
     def apply(self, data: Data) -> Tensor:
         if data.edge_attr:

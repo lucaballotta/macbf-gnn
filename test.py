@@ -29,7 +29,7 @@ def test(args):
     for n in args.num_agents: 
         
         # make environment
-        delay_aware = True
+        delay_aware = False
         env = make_env(
             settings['env'] if args.env is None else args.env,
             settings['num_agents'] if n is None else n,
@@ -43,6 +43,7 @@ def test(args):
             env.demo(args.demo)
 
         # build algorithm
+        use_all_data = True
         algo = make_algo(
             settings['algo'],
             env,
@@ -52,7 +53,8 @@ def test(args):
             env.state_dim,
             env.action_dim,
             device,
-            hyperparams=settings['hyper_params'] if 'hyper_params' in settings.keys() else None
+            hyperparams=settings['hyper_params'] if 'hyper_params' in settings.keys() else None,
+            use_all_data=use_all_data
         )
         if args.path is None:
             assert args.env is not None and n is not None
@@ -91,6 +93,7 @@ def test(args):
             results.append(
                 eval_ctrl_epi(
                     algo.act,
+                    algo.use_all_data,
                     env,
                     np.random.randint(100000), 
                     not args.no_video, 

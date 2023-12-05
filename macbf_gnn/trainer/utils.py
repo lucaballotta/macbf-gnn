@@ -137,7 +137,13 @@ def read_settings(path: str) -> dict:
 
 
 def eval_ctrl_epi(
-        controller: Callable, env: MultiAgentEnv, seed: int = 0, make_video: bool = True, plot_edge: bool = True, verbose: bool = True,
+        controller: Callable,
+        use_all_data: bool,
+        env: MultiAgentEnv, 
+        seed: int = 0, 
+        make_video: bool = True, 
+        plot_edge: bool = True,
+        verbose: bool = True
 ) -> Tuple[float, float, Tuple[Union[Tuple[np.array, ...], np.array]], dict]:
     """
     Evaluate the controller for one episode.
@@ -179,7 +185,16 @@ def eval_ctrl_epi(
     states = []
     for _ in range(env.max_episode_steps):
         data.u_ref = env.u_ref(data)
-        action = controller(data)
+        if env.delay_aware and not use_all_data and data.edge_index.numel():
+            data.edge_attr = torch.stack(
+                [edge_attr[-1, :] for edge_attr in data.edge_attr]
+            )
+        
+        if data.edge_index.numel():
+            action = controller(data)
+        else:
+            action = torch.zeros(env.num_agents, env.action_dim, device=env.device)
+
         states.append(data.states)
         next_data, reward, done, info = env.step(action)
         epi_length += 1
