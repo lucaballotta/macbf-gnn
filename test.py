@@ -16,9 +16,9 @@ def test(args):
 
     # set up testing device
     use_cuda = torch.cuda.is_available() and not args.cpu
-    if use_cuda:
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
-    device = torch.device('cuda:' + os.environ["CUDA_VISIBLE_DEVICES"] if use_cuda else 'cpu')
+    # if use_cuda:
+    #     os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+    device = torch.device('cuda:' + str(args.gpu) if use_cuda else 'cpu')
 
     # load training settings
     try:

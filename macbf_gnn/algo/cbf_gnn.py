@@ -182,7 +182,7 @@ class MACBFGNN(Algorithm):
             # print('')
             # print('@@@@@@@@@@@@@@@@@@@')
             # action = self.controller(data)
-            # print('action norm', torch.mean(torch.square(action).sum(dim=1)))
+            # print('action norm', torch.mean(torch.square(action).sum(dim=1)).item())
             # print('state', data.state_diff)
             # print('edge attr', data.edge_attr)
             # true_state_diff_norm = torch.norm(data.state_diff, dim=1)
@@ -433,23 +433,34 @@ class MACBFGNN(Algorithm):
         
 
     def apply(self, data: Data) -> Tensor:
-        if data.edge_attr:
-            input_data = Data(
-                    x=data.x,
-                    edge_index=data.edge_index,
-                    edge_attr=self.predictor(data.edge_attr),
-                    u_ref=data.u_ref
-                )
-            h = self.cbf(input_data).detach()
-            action = self.controller(input_data).detach()
-            nominal = torch.zeros_like(action, device=self.device)
-            data_next = self._env.forward_graph(data, nominal, self.use_all_data)
-            data_next_pred = Data(
-                        x=data_next.x,
-                        edge_index=data_next.edge_index,
-                        edge_attr=self.predictor(data_next.edge_attr)
+        if data.edge_index.numel():
+            if self._env.delay_aware:
+                input_data = Data(
+                        x=data.x,
+                        edge_index=data.edge_index,
+                        edge_attr=self.predictor(data.edge_attr),
+                        u_ref=data.u_ref
                     )
-            h_next = self.cbf(data_next_pred)
+                h = self.cbf(input_data).detach()
+                action = self.controller(input_data).detach()
+            
+            else:
+                h = self.cbf(data).detach()
+                action = self.controller(data).detach()
+            
+            nominal = torch.zeros_like(action, device=self.device)
+            data_next = self._env.forward_graph(data, nominal)
+            if self._env.delay_aware:
+                data_next_pred = Data(
+                            x=data_next.x,
+                            edge_index=data_next.edge_index,
+                            edge_attr=self.predictor(data_next.edge_attr)
+                        )
+                h_next = self.cbf(data_next_pred)
+            
+            else:
+                h_next = self.cbf(data_next)
+            
             h_dot = (h_next - h) / self._env.dt
             safe_nominal_mask = torch.sign(torch.relu(h_dot + self.params['alpha'] * h - self.params['eps'])).detach()
             return nominal * safe_nominal_mask + action * torch.logical_not(safe_nominal_mask)
