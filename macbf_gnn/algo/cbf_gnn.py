@@ -141,55 +141,19 @@ class MACBFGNN(Algorithm):
 
     @torch.no_grad()
     def act(self, data: Data) -> Tensor:
-        if self._env.delay_aware:
-            input_data = Data(
-                x=data.x,
-                edge_index=data.edge_index,
-                edge_attr=self.predictor(data.edge_attr),
-                u_ref=data.u_ref
-            )
-            # print('')
-            # print('@@@@@@@@@@@@@@@@@@@')
-            # h = self.cbf(input_data)
-            # print('state', data.state_diff)
-            # print('edge attr', data.edge_attr)
-            # input()
-            # print('pred state', input_data.edge_attr)
-            # true_state_diff_norm = torch.norm(data.state_diff, dim=1)
-            # pred_err_norm = torch.norm(input_data.edge_attr - data.state_diff, dim=1)
-            # print('state error', torch.mean(pred_err_norm / true_state_diff_norm).item())
-            # print('cbf', h)
-            # action = self.controller(input_data)
-            # data_next = self._env.forward_graph(data, action, self.use_all_data)
-            # input_cbf_next = Data(
-            #     x=data_next.x,
-            #     edge_index=data_next.edge_index,
-            #     edge_attr=data_next.state_diff
-            # )
-            # h_next = self.cbf(input_cbf_next)
-            # print('next cbf', h_next)
-            # action = self.controller(input_data)
-            # print('action', action)
-            # print('action norm', torch.mean(torch.square(action).sum(dim=1)))
-            # h_dot = (h_next - h) / self._env.dt
-            # max_val_h_dot = torch.relu(-h_dot - self.params['alpha'] * h + self.params['eps'])
-            # print('loss_h_dot', torch.mean(max_val_h_dot).item())
-            # print('actual safe', not torch.any(self._env.unsafe_mask(data)))
-            # print('CBF-safe', torch.all(h>0).item())
-            return self.controller(input_data)
-        
-        else:
-            # print('')
-            # print('@@@@@@@@@@@@@@@@@@@')
-            # action = self.controller(data)
-            # print('action norm', torch.mean(torch.square(action).sum(dim=1)).item())
-            # print('state', data.state_diff)
-            # print('edge attr', data.edge_attr)
-            # true_state_diff_norm = torch.norm(data.state_diff, dim=1)
-            # pred_err_norm = torch.norm(data.edge_attr - data.state_diff, dim=1)
-            # print('state error', torch.mean(pred_err_norm / true_state_diff_norm).item())
-            # input()
-            return self.controller(data)
+        if data.edge_index.numel():
+            
+            if self._env.delay_aware:
+                input_data = Data(
+                    x=data.x,
+                    edge_index=data.edge_index,
+                    edge_attr=self.predictor(data.edge_attr),
+                    u_ref=data.u_ref
+                )
+                return self.controller(input_data)
+            
+            else:
+                return self.controller(data)
 
     @torch.no_grad()
     def step(self, data: Data, prob: float) -> Tensor:
@@ -300,6 +264,8 @@ class MACBFGNN(Algorithm):
                 graphs_next = self._env.forward_graph(graphs, actions, self.use_all_data)
                 
                 if self._env.delay_aware:
+                    
+                    # TODO: remove next line
                     graphs_next.edge_attr.requires_grad = True
                     true_state_diff_next = graphs_next.state_diff
                     cbf_input_data_next = Data(
@@ -309,7 +275,8 @@ class MACBFGNN(Algorithm):
                     )
                     h_next = self.cbf(cbf_input_data_next)
 
-                    # update prediction loss
+                    # TODO: remove next lines
+                    # # update prediction loss
                     pred_state_diff_next = self.predictor(graphs_next.edge_attr)
                     true_state_diff_next_norm = torch.norm(true_state_diff_next, dim=1)
                     pred_err_next_norm = torch.norm(pred_state_diff_next - true_state_diff_next, dim=1)

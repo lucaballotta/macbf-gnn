@@ -88,19 +88,13 @@ class SimpleCar(MultiAgentEnv):
             'dist2goal': 0.02,  # goal reaching threshold
             'comm_radius': 1.,  # communication radius
             'buffer_size': 5,  # max number of transmissions (tx delays) stored by cars
-            'max_age': 5,  # max age of data stored by cars (older are discarded)
-            'poisson_coeff': .8
+            'max_age': 10,  # max age of data stored by cars (older are discarded)
+            'poisson_coeff': 1.
         }
         
         
     def dynamics(self, x: Tensor, u: Union[Tensor, Expression]) -> Union[Tensor, Expression]:
-        xdot = u
-        if x.shape[0] == self.num_agents:
-            reach = torch.less(torch.norm(x[:, :2] - self._goal[:, :2], dim=1), self._params['dist2goal'])
-            return xdot * torch.logical_not(reach).unsqueeze(1).repeat(1, self.state_dim)
-        
-        else:
-            return xdot
+        return u
         
         
     def reset(self) -> Data:
@@ -274,7 +268,7 @@ class SimpleCar(MultiAgentEnv):
                         idx_car, stored_data, delay_rec, self.delay_aware)
                     
 
-    def forward_graph(self, data: Data, action: Tensor) -> Data:
+    def forward_graph(self, data: Data, action: Tensor, use_all_data: bool = True) -> Data:
         
         # calculate next state using dynamics
         action = action + self.u_ref(data)

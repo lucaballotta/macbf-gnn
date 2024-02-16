@@ -77,7 +77,7 @@ class DubinsCar(MultiAgentEnv):
     
     @property
     def max_episode_steps(self) -> int:
-        return 500
+        return 200
 
     @property
     def default_params(self) -> dict:
@@ -88,8 +88,8 @@ class DubinsCar(MultiAgentEnv):
             'dist2goal': 0.02,
             'comm_radius': 1.0,
             'buffer_size': 5,  # max number of transmissions (tx delays) stored by cars
-            'max_age': 5,  # max age of data stored by cars (older are discarded)
-            'poisson_coeff': .2
+            'max_age': 10,  # max age of data stored by cars (older are discarded)
+            'poisson_coeff': .5
         }
     
 
@@ -99,12 +99,8 @@ class DubinsCar(MultiAgentEnv):
         xdot[:, 1] = x[:, 3] * torch.sin(x[:, 2])
         xdot[:, 2] = u[:, 0] * 10
         xdot[:, 3] = u[:, 1]
-        if x.shape[0] == self.num_agents:
-            reach = torch.less(torch.norm(x[:, :2] - self._goal[:, :2], dim=1), self._params['dist2goal'])
-            return xdot * torch.logical_not(reach).unsqueeze(1).repeat(1, self.state_dim)
         
-        else:
-            return xdot
+        return xdot
             
 
     def reset(self) -> Data:
@@ -303,6 +299,7 @@ class DubinsCar(MultiAgentEnv):
                                (data_next.states[:, 3] * torch.sin(data_next.states[:, 2])).unsqueeze(1)], dim=1
                             ).to(self.device)
         data_next.state_diff = state_aug[data_next.edge_index[0]] - state_aug[data_next.edge_index[1]]
+
         if self.delay_aware:
             if use_all_data:
 
