@@ -42,12 +42,12 @@ def train(args):
             'alpha': 1.,
             'eps': 0.02,
             'inner_iter': 10,
-            'loss_action_coef': 0.01,
+            'loss_action_coef': 0.001,
             'loss_pred_coef': 1.,
-            'loss_pred_next_ratio_coef': 1.,
-            'loss_unsafe_coef': 1.,
+            'loss_pred_next_ratio_coef': 0.,
+            'loss_unsafe_coef': 1.1,
             'loss_safe_coef': 1.,
-            'loss_h_dot_coef': .7
+            'loss_h_dot_coef': .5
         }
         print('> Using custom hyper-parameters')
     else:
@@ -65,7 +65,7 @@ def train(args):
     )
 
     # set up algorithm
-    use_all_data = False
+    use_all_data = True
     algo = make_algo(
         args.algo, 
         env, 
@@ -85,7 +85,11 @@ def train(args):
         controller_name = os.listdir(model_path)
         controller_name = [i for i in controller_name if 'step' in i]
         controller_id = sorted([int(i.split('step_')[1].split('.')[0]) for i in controller_name])
-        algo.load(os.path.join(model_path, f'step_{controller_id[-1]}'), warm_start=True)
+        algo.load(
+            os.path.join(model_path, f'step_{controller_id[-1]}'), 
+            env.delay_aware, 
+            train_warm_start=True
+        )
 
     # set up trainer
     trainer = Trainer(

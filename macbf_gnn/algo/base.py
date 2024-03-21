@@ -165,7 +165,7 @@ class Algorithm(ABC):
         pass
 
     @abstractmethod
-    def load(self, load_dir: str, warm_start: bool):
+    def load(self, load_dir: str, delay_aware: bool, train_warm_start: bool):
         """
         Load the models from load_dir
 
@@ -173,7 +173,9 @@ class Algorithm(ABC):
         ----------
         load_dir: str,
             folder to load the models
-        warm_start: bool,
+        delay_aware: bool,
+            True if exchanged data carry information about communication delay
+        train_warm_start: bool,
             True if loaded model is used as warm start for training
         """
         pass

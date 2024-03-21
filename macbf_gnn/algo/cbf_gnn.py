@@ -391,11 +391,11 @@ class MACBFGNN(Algorithm):
         torch.save(self.controller.state_dict(), os.path.join(save_dir, 'actor.pkl'))
 
 
-    def load(self, load_dir: str, warm_start: bool = False):
+    def load(self, load_dir: str, delay_aware: bool, train_warm_start: bool = False):
         assert os.path.exists(load_dir)
         self.cbf.load_state_dict(torch.load(os.path.join(load_dir, 'cbf.pkl'), map_location=self.device))
         self.controller.load_state_dict(torch.load(os.path.join(load_dir, 'actor.pkl'), map_location=self.device))
-        if not warm_start:
+        if delay_aware and not train_warm_start:
             self.predictor.load_state_dict(torch.load(os.path.join(load_dir, 'predictor.pkl'), map_location=self.device))
         
 

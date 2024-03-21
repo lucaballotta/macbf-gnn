@@ -29,7 +29,7 @@ def test(args):
     for n in args.num_agents: 
         
         # make environment
-        delay_aware = True
+        delay_aware = False
         env = make_env(
             settings['env'] if args.env is None else args.env,
             settings['num_agents'] if n is None else n,
@@ -72,13 +72,13 @@ def test(args):
             model_path = os.path.join(args.path, 'models')
             if args.iter is not None:
                 # load the controller at given iteration
-                algo.load(os.path.join(model_path, f'step_{args.iter}'))
+                algo.load(os.path.join(model_path, f'step_{args.iter}'), env.delay_aware)
             else:
                 # load the last controller
                 controller_name = os.listdir(model_path)
                 controller_name = [i for i in controller_name if 'step' in i]
                 controller_id = sorted([int(i.split('step_')[1].split('.')[0]) for i in controller_name])
-                algo.load(os.path.join(model_path, f'step_{controller_id[-1]}'))
+                algo.load(os.path.join(model_path, f'step_{controller_id[-1]}'), env.delay_aware)
             video_path = os.path.join(args.path, 'videos')
 
         # mkdir for the video and the figures
