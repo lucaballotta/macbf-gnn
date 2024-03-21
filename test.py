@@ -29,7 +29,7 @@ def test(args):
     for n in args.num_agents: 
         
         # make environment
-        delay_aware = False
+        delay_aware = True
         env = make_env(
             settings['env'] if args.env is None else args.env,
             settings['num_agents'] if n is None else n,
