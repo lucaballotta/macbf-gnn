@@ -265,7 +265,6 @@ class MACBFGNN(Algorithm):
                 
                 if self._env.delay_aware:
                     
-                    # TODO: remove next line
                     graphs_next.edge_attr.requires_grad = True
                     true_state_diff_next = graphs_next.state_diff
                     cbf_input_data_next = Data(
@@ -275,8 +274,7 @@ class MACBFGNN(Algorithm):
                     )
                     h_next = self.cbf(cbf_input_data_next)
 
-                    # TODO: remove next lines
-                    # # update prediction loss
+                    # update prediction loss
                     pred_state_diff_next = self.predictor(graphs_next.edge_attr)
                     true_state_diff_next_norm = torch.norm(true_state_diff_next, dim=1)
                     pred_err_next_norm = torch.norm(pred_state_diff_next - true_state_diff_next, dim=1)
